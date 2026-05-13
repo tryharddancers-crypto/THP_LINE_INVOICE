@@ -28,20 +28,29 @@ function lookupUnitPrice(jobName) {
 
 /**
  * LIFFフォームのドロップダウン用にマスタデータを返す
- * @returns {{ jobNames: string[], dancerNames: string[] }}
+ * jobList: [{ name, billing, unitPrice }]
+ * @returns {{ jobList: object[], dancerNames: string[] }}
  */
 function getMasterData() {
   const ss = getMasterSpreadsheet();
 
+  // 案件マスタ: A=案件名, B=請求元, C=単価
   const jobSheet = ss.getSheetByName('案件マスタ');
   const jobData = jobSheet.getDataRange().getValues();
-  const jobNames = jobData.slice(1).map(row => row[0]).filter(v => v !== '');
+  const jobList = jobData.slice(1)
+    .filter(row => row[0] !== '')
+    .map(row => ({
+      name:      String(row[0]),
+      billing:   String(row[1] || 'その他'),
+      unitPrice: Number(row[2]) || 0
+    }));
 
+  // ダンサーマスタ: A=芸名
   const dancerSheet = ss.getSheetByName('ダンサーマスタ');
   const dancerData = dancerSheet.getDataRange().getValues();
   const dancerNames = dancerData.slice(1).map(row => row[0]).filter(v => v !== '');
 
-  return { jobNames, dancerNames };
+  return { jobList, dancerNames };
 }
 
 /**
