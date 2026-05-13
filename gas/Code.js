@@ -49,10 +49,10 @@ function handleSubmission(e) {
     throw new Error('rows is empty');
   }
 
-  // 単価をマスタから補完
+  // 単価はフロントエンドから送られてきたものをそのまま使用する
   const enrichedRows = rows.map(row => ({
     ...row,
-    unitPrice: lookupUnitPrice(row.jobName)
+    unitPrice: row.unitPrice || 0
   }));
 
   // 当月スプレッドシートに追記
@@ -60,12 +60,47 @@ function handleSubmission(e) {
   const ss = getOrCreateMonthlySpreadsheet(date);
   appendRowsToInputSheet(ss, enrichedRows);
 
-  // LINE通知
-  const dateLabel = rows[0].date;
-  const message = `✅ ${rows.length}件追加しました（${dateLabel}）\nスプレッドシート: ${ss.getUrl()}`;
+  // LINE通知（送信内容の詳細を含む）
+  const message = buildSubmissionMessage(enrichedRows, ss.getUrl());
   if (userId) {
     sendLineMessage(userId, message);
   }
 
-  return { ok: true, count: rows.length, date: dateLabel };
+  return { ok: true, count: rows.length, date: enrichedRows[0].date };
+}
+
+/**
+ * 送信内容を人物・案件ごとに整形したLINEメッセージを生成する
+ * @param {object[]} rows
+ * @param {string} sheetUrl
+ * @returns {string}
+ */
+function buildSubmissionMessage(rows, sheetUrl) {
+  // 人物（名前＋日付）ごとにグループ化
+  const groups = {};
+  rows.forEach(function(row) {
+    const key = row.name + '__' + row.date;
+    if (!groups[key]) groups[key] = { name: row.name, date: row.date, jobs: [] };
+    groups[key].jobs.push(row);
+  });
+
+  let grandTotal = 0;
+  const lines = ['✅ ' + rows.length + '件を追加しました'];
+
+  Object.values(groups).forEach(function(g) {
+    lines.push('');
+    lines.push('【' + g.date + '】' + g.name);
+    g.jobs.forEach(function(j) {
+      const total = j.unitPrice * j.qty;
+      grandTotal += total;
+      const detail = j.detail ? '（' + j.detail + '）' : '';
+      lines.push('・' + j.jobName + detail + ' ×' + j.qty + '  ¥' + total.toLocaleString());
+    });
+  });
+
+  lines.push('');
+  lines.push('合計：¥' + grandTotal.toLocaleString());
+  lines.push(sheetUrl);
+
+  return lines.join('\n');
 }

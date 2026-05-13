@@ -9,18 +9,56 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f5f5; padding: 16px; }
     h1 { font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 16px; color: #06c755; }
-    .row-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .row-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .row-number { font-size: 13px; font-weight: bold; color: #666; }
-    .remove-btn { background: none; border: none; color: #e74c3c; font-size: 18px; cursor: pointer; padding: 0 4px; }
+
+    /* 入力フォーム */
+    .person-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .person-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .person-title { font-size: 14px; font-weight: bold; color: #333; }
+    .remove-person-btn { background: none; border: none; color: #e74c3c; font-size: 18px; cursor: pointer; padding: 0 4px; }
     .field { margin-bottom: 8px; }
     label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
     select, input[type="text"], input[type="number"], input[type="date"] {
       width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
     }
-    .add-btn { display: block; width: 100%; padding: 10px; background: #fff; border: 2px dashed #06c755; border-radius: 8px; color: #06c755; font-size: 14px; cursor: pointer; margin-bottom: 16px; }
+    .jobs-section { border-top: 1px solid #eee; padding-top: 10px; margin-top: 10px; }
+    .jobs-label { font-size: 12px; font-weight: bold; color: #555; margin-bottom: 8px; }
+    .job-item { background: #f7f7f7; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+    .job-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .job-number { font-size: 12px; color: #999; }
+    .remove-job-btn { background: none; border: none; color: #e74c3c; font-size: 16px; cursor: pointer; padding: 0 4px; }
+    .job-row { display: flex; gap: 8px; }
+    .job-row .qty-wrap { flex: 0 0 80px; }
+    .job-row .detail-wrap { flex: 1; }
+    .add-job-btn { display: block; width: 100%; padding: 8px; background: #fff; border: 1px dashed #06c755; border-radius: 6px; color: #06c755; font-size: 13px; cursor: pointer; margin-top: 4px; }
+    .add-person-btn { display: block; width: 100%; padding: 10px; background: #fff; border: 2px dashed #06c755; border-radius: 8px; color: #06c755; font-size: 14px; cursor: pointer; margin-bottom: 16px; }
     .submit-btn { display: block; width: 100%; padding: 14px; background: #06c755; border: none; border-radius: 8px; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
     .submit-btn:disabled { background: #aaa; cursor: not-allowed; }
+
+    /* リアルタイム金額表示 */
+    .price-preview {
+      font-size: 13px; color: #06c755; font-weight: bold;
+      text-align: right; margin-top: 4px; min-height: 18px;
+      transition: opacity 0.2s;
+    }
+
+    /* 確認画面 */
+    #confirm-view { display: none; }
+    .confirm-title { font-size: 16px; font-weight: bold; text-align: center; margin-bottom: 16px; color: #333; }
+    .confirm-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .confirm-person { font-size: 14px; font-weight: bold; color: #06c755; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+    .confirm-row { display: flex; font-size: 13px; padding: 4px 0; border-bottom: 1px solid #f0f0f0; align-items: center; }
+    .confirm-row:last-child { border-bottom: none; }
+    .confirm-job { flex: 1; color: #333; }
+    .confirm-qty { color: #666; margin-left: 8px; white-space: nowrap; }
+    .confirm-detail { color: #999; font-size: 12px; margin-left: 8px; }
+    .confirm-price { color: #06c755; font-weight: bold; margin-left: 8px; white-space: nowrap; }
+    .confirm-subtotal { text-align: right; font-size: 13px; color: #333; font-weight: bold; margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee; }
+    .confirm-grand-total { background: #06c755; color: #fff; border-radius: 8px; padding: 12px; text-align: center; font-size: 16px; font-weight: bold; margin-bottom: 12px; }
+    .btn-row { display: flex; gap: 10px; margin-bottom: 12px; }
+    .back-btn { flex: 1; padding: 14px; background: #fff; border: 2px solid #06c755; border-radius: 8px; color: #06c755; font-size: 15px; font-weight: bold; cursor: pointer; }
+    .confirm-btn { flex: 2; padding: 14px; background: #06c755; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-weight: bold; cursor: pointer; }
+    .confirm-btn:disabled { background: #aaa; cursor: not-allowed; }
+
     #message { margin-top: 12px; text-align: center; font-size: 14px; color: #333; min-height: 20px; }
     .error { color: #e74c3c; }
     #loading { text-align: center; padding: 40px; color: #666; }
@@ -28,117 +66,306 @@
 </head>
 <body>
   <div id="loading">読み込み中...</div>
-  <div id="app" style="display:none">
+
+  <!-- 入力フォーム -->
+  <div id="form-view" style="display:none">
     <h1>案件入力フォーム</h1>
-    <div id="rows-container"></div>
-    <button class="add-btn" onclick="addRow()">＋ 行を追加（最大10件）</button>
-    <button class="submit-btn" id="submit-btn" onclick="submitForm()">送 信</button>
+    <div id="persons-container"></div>
+    <button class="add-person-btn" onclick="addPerson()">＋ 人物を追加</button>
+    <button class="submit-btn" onclick="showConfirm()">内容を確認する</button>
+    <p id="form-message" class="error" style="margin-top:10px; text-align:center; font-size:14px;"></p>
+  </div>
+
+  <!-- 確認画面 -->
+  <div id="confirm-view">
+    <h1>送信内容の確認</h1>
+    <p style="text-align:center; font-size:13px; color:#666; margin-bottom:14px;">内容をご確認ください</p>
+    <div id="confirm-content"></div>
+    <div class="btn-row">
+      <button class="back-btn" onclick="backToForm()">修正する</button>
+      <button class="confirm-btn" id="confirm-btn" onclick="submitForm()">確定送信</button>
+    </div>
     <p id="message"></p>
   </div>
 
   <script>
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaoktuiYe8LUTgQWBCPDwby6P4W5lO0ofzX_r4v6kB8GM3afUN3XeQ1Aja0jokti2mA/exec';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxQ_j5xTt7aeKrYGYCGlVqbEwu13KrO4hjcl0FxDleSNxdVAeTCWvFkLv5FRoj0GC2AOA/exec';
     const LIFF_ID = '2009725727-3jvV9g52';
 
     let liffProfile = null;
-    let masterData = { jobNames: [], dancerNames: [] };
-    let rowCount = 0;
+    let masterData = { jobList: [], dancerNames: [] };
+    let personCount = 0;
+    const jobCountMap = {};
+    let pendingRows = [];
+    let jobTree = {};
+    let priceMap = {}; // 案件名 → 単価
 
     async function init() {
       try {
         await liff.init({ liffId: LIFF_ID });
-
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-
-        try {
-          liffProfile = await liff.getProfile();
-        } catch (e) {}
-
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        try { liffProfile = await liff.getProfile(); } catch (e) {}
         const res = await fetch(`${GAS_URL}?action=getMaster`);
         const json = await res.json();
         if (json.ok) {
           masterData = json.data;
-        }
 
+          // jobTree と priceMap を構築
+          jobTree = {};
+          priceMap = {};
+          if (masterData.jobList) {
+            masterData.jobList.forEach(job => {
+              const category = job.billing || 'その他';
+              if (!jobTree[category]) jobTree[category] = [];
+              jobTree[category].push({ label: job.name, value: job.name });
+              priceMap[job.name] = job.unitPrice || 0;
+            });
+          }
+        }
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-        addRow();
+        document.getElementById('form-view').style.display = 'block';
+        addPerson();
       } catch (err) {
         document.getElementById('loading').textContent = '❌ エラー: ' + err.message;
       }
     }
 
-    function addRow() {
-      if (rowCount >= 10) return;
-      rowCount++;
-      const n = rowCount;
-      const today = new Date();
-      const dateVal = today.toISOString().split('T')[0];
-      const jobOptions = masterData.jobNames.map(j => `<option value="${j}">${j}</option>`).join('');
-      const dancerOptions = masterData.dancerNames.map(d => `<option value="${d}">${d}</option>`).join('');
+    function getToday() { return new Date().toISOString().split('T')[0]; }
+    function dancerOptions() { return masterData.dancerNames.map(d => `<option value="${d}">${d}</option>`).join(''); }
+    function billingOptions() { return Object.keys(jobTree).map(cat => `<option value="${cat}">${cat}</option>`).join(''); }
+
+    function addPerson() {
+      personCount++;
+      const pid = personCount;
+      jobCountMap[pid] = 0;
       const card = document.createElement('div');
-      card.className = 'row-card';
-      card.id = `row-${n}`;
+      card.className = 'person-card';
+      card.id = `person-${pid}`;
       card.innerHTML = `
-        <div class="row-header">
-          <span class="row-number">${n}件目</span>
-          ${n > 1 ? `<button class="remove-btn" onclick="removeRow(${n})">✕</button>` : ''}
+        <div class="person-header">
+          <span class="person-title">${pid}人目</span>
+          <button class="remove-person-btn" onclick="removePerson(${pid})">✕</button>
         </div>
-        <div class="field"><label>日程</label><input type="date" id="date-${n}" value="${dateVal}" required></div>
-        <div class="field"><label>案件名</label><select id="job-${n}" required><option value="">選択してください</option>${jobOptions}</select></div>
-        <div class="field"><label>名前</label><select id="name-${n}" required><option value="">選択してください</option>${dancerOptions}</select></div>
-        <div class="field"><label>数量</label><input type="number" id="qty-${n}" value="1" min="1" required></div>
-        <div class="field"><label>詳細（任意）</label><input type="text" id="detail-${n}" placeholder="任意"></div>
+        <div class="field">
+          <label>日程</label>
+          <input type="date" id="date-${pid}" value="${getToday()}" required>
+        </div>
+        <div class="field">
+          <label>名前</label>
+          <select id="name-${pid}" required>
+            <option value="">選択してください</option>
+            ${dancerOptions()}
+          </select>
+        </div>
+        <div class="jobs-section">
+          <div class="jobs-label">案件（複数追加可）</div>
+          <div id="jobs-${pid}"></div>
+          <button class="add-job-btn" onclick="addJob(${pid})">＋ 案件を追加</button>
+        </div>
       `;
-      document.getElementById('rows-container').appendChild(card);
+      document.getElementById('persons-container').appendChild(card);
+      addJob(pid);
     }
 
-    function removeRow(n) {
-      const el = document.getElementById(`row-${n}`);
+    function removePerson(pid) {
+      const el = document.getElementById(`person-${pid}`);
       if (el) el.remove();
     }
 
+    function addJob(pid) {
+      jobCountMap[pid]++;
+      const jid = jobCountMap[pid];
+      const item = document.createElement('div');
+      item.className = 'job-item';
+      item.id = `job-${pid}-${jid}`;
+      item.innerHTML = `
+        <div class="job-item-header">
+          <span class="job-number">案件 ${jid}</span>
+          <button class="remove-job-btn" onclick="removeJob(${pid}, ${jid})">✕</button>
+        </div>
+        <div class="field">
+          <label>請求元 / 案件名</label>
+          <div style="display:flex; gap:8px;">
+            <select id="billing-${pid}-${jid}" onchange="updateJobDetail(${pid}, ${jid})" required>
+              <option value="">請求元を選択</option>
+              ${billingOptions()}
+            </select>
+            <select id="jobname-${pid}-${jid}" onchange="calcJobPrice(${pid}, ${jid})" required disabled>
+              <option value="">案件を選択</option>
+            </select>
+          </div>
+        </div>
+        <div class="job-row">
+          <div class="qty-wrap field">
+            <label>数量</label>
+            <input type="number" id="qty-${pid}-${jid}" value="1" min="1" oninput="calcJobPrice(${pid}, ${jid})" required>
+          </div>
+          <div class="detail-wrap field">
+            <label>詳細（任意）</label>
+            <input type="text" id="detail-${pid}-${jid}" placeholder="任意">
+          </div>
+        </div>
+        <div class="price-preview" id="price-${pid}-${jid}"></div>
+      `;
+      document.getElementById(`jobs-${pid}`).appendChild(item);
+    }
+
+    function removeJob(pid, jid) {
+      const el = document.getElementById(`job-${pid}-${jid}`);
+      if (el) el.remove();
+    }
+
+    function updateJobDetail(pid, jid) {
+      const billingSelect = document.getElementById(`billing-${pid}-${jid}`);
+      const detailSelect = document.getElementById(`jobname-${pid}-${jid}`);
+      const category = billingSelect.value;
+
+      detailSelect.innerHTML = '<option value="">案件を選択</option>';
+      if (category && jobTree[category]) {
+        jobTree[category].forEach(item => {
+          const opt = document.createElement('option');
+          opt.value = item.value;
+          opt.textContent = item.label;
+          detailSelect.appendChild(opt);
+        });
+        detailSelect.disabled = false;
+      } else {
+        detailSelect.disabled = true;
+      }
+      calcJobPrice(pid, jid);
+    }
+
+    // ★ リアルタイム金額計算
+    function calcJobPrice(pid, jid) {
+      const jobName = document.getElementById(`jobname-${pid}-${jid}`).value;
+      const qty = Number(document.getElementById(`qty-${pid}-${jid}`).value) || 1;
+      const priceEl = document.getElementById(`price-${pid}-${jid}`);
+      if (!jobName) { priceEl.textContent = ''; return; }
+      const unitPrice = priceMap[jobName];
+      if (unitPrice === undefined) { priceEl.textContent = '単価：不明'; return; }
+      const total = unitPrice * qty;
+      priceEl.textContent = `単価 ¥${unitPrice.toLocaleString()} × ${qty} = ¥${total.toLocaleString()}`;
+    }
+
+    // バリデーションしてrowsを返す
+    function collectRows() {
+      const rows = [];
+      const personCards = document.querySelectorAll('.person-card');
+      if (personCards.length === 0) throw new Error('人物を1件以上追加してください');
+      for (const pcard of personCards) {
+        const pid = pcard.id.replace('person-', '');
+        const rawDate = document.getElementById(`date-${pid}`).value;
+        const date = rawDate.replace(/-/g, '/');
+        const name = document.getElementById(`name-${pid}`).value;
+        if (!date) throw new Error(`${pid}人目: 日程を入力してください`);
+        if (!name) throw new Error(`${pid}人目: 名前を選択してください`);
+        const jobItems = pcard.querySelectorAll('.job-item');
+        if (jobItems.length === 0) throw new Error(`${pid}人目: 案件を1件以上追加してください`);
+        for (const jitem of jobItems) {
+          const parts = jitem.id.split('-');
+          const jid = parts[parts.length - 1];
+          const jobName = document.getElementById(`jobname-${pid}-${jid}`).value;
+          const qty = Number(document.getElementById(`qty-${pid}-${jid}`).value);
+          const detail = document.getElementById(`detail-${pid}-${jid}`).value;
+          const unitPrice = priceMap[jobName] ?? 0;
+          if (!jobName) throw new Error(`${pid}人目 案件${jid}: 案件名を選択してください`);
+          if (!qty) throw new Error(`${pid}人目 案件${jid}: 数量を入力してください`);
+          rows.push({ date, jobName, name, qty, detail, unitPrice });
+        }
+      }
+      return rows;
+    }
+
+    function showConfirm() {
+      const errEl = document.getElementById('form-message');
+      try {
+        pendingRows = collectRows();
+        errEl.textContent = '';
+      } catch (e) {
+        errEl.textContent = '❌ ' + e.message;
+        return;
+      }
+
+      const content = document.getElementById('confirm-content');
+      content.innerHTML = '';
+
+      // 人ごとにグループ化
+      const groups = {};
+      for (const r of pendingRows) {
+        const key = `${r.name}__${r.date}`;
+        if (!groups[key]) groups[key] = { name: r.name, date: r.date, jobs: [] };
+        groups[key].jobs.push(r);
+      }
+
+      let grandTotal = 0;
+
+      for (const g of Object.values(groups)) {
+        const personTotal = g.jobs.reduce((s, j) => s + j.unitPrice * j.qty, 0);
+        grandTotal += personTotal;
+
+        const card = document.createElement('div');
+        card.className = 'confirm-card';
+        let jobRows = g.jobs.map(j => `
+          <div class="confirm-row">
+            <span class="confirm-job">${j.jobName}</span>
+            <span class="confirm-qty">× ${j.qty}</span>
+            ${j.detail ? `<span class="confirm-detail">${j.detail}</span>` : ''}
+            <span class="confirm-price">¥${(j.unitPrice * j.qty).toLocaleString()}</span>
+          </div>
+        `).join('');
+        card.innerHTML = `
+          <div class="confirm-person">📅 ${g.date}　👤 ${g.name}</div>
+          ${jobRows}
+          <div class="confirm-subtotal">小計：¥${personTotal.toLocaleString()}</div>
+        `;
+        content.appendChild(card);
+      }
+
+      // 合計金額カード
+      const totalCard = document.createElement('div');
+      totalCard.className = 'confirm-grand-total';
+      totalCard.textContent = `合計金額：¥${grandTotal.toLocaleString()}（${pendingRows.length}件）`;
+      content.appendChild(totalCard);
+
+      document.getElementById('form-view').style.display = 'none';
+      document.getElementById('confirm-view').style.display = 'block';
+      document.getElementById('message').textContent = '';
+    }
+
+    function backToForm() {
+      document.getElementById('confirm-view').style.display = 'none';
+      document.getElementById('form-view').style.display = 'block';
+    }
+
     async function submitForm() {
-      const btn = document.getElementById('submit-btn');
+      const btn = document.getElementById('confirm-btn');
       const msg = document.getElementById('message');
       btn.disabled = true;
       msg.textContent = '送信中...';
       msg.className = '';
       try {
-        const cards = document.querySelectorAll('.row-card');
-        const rows = [];
-        for (const card of cards) {
-          const n = card.id.replace('row-', '');
-          const rawDate = document.getElementById(`date-${n}`).value;
-          const date = rawDate.replace(/-/g, '/');
-          const jobName = document.getElementById(`job-${n}`).value;
-          const name = document.getElementById(`name-${n}`).value;
-          const qty = Number(document.getElementById(`qty-${n}`).value);
-          const detail = document.getElementById(`detail-${n}`).value;
-          if (!date || !jobName || !name || !qty) {
-            throw new Error(`${n}件目: 必須項目を入力してください`);
-          }
-          rows.push({ date, jobName, name, qty, detail });
-        }
-        const payload = { userId: liffProfile ? liffProfile.userId : null, rows };
+        const payload = { userId: liffProfile ? liffProfile.userId : null, rows: pendingRows };
         const res = await fetch(GAS_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(payload)
         });
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '送信に失敗しました');
         msg.textContent = `✅ ${json.count}件を送信しました（${json.date}）`;
-        document.getElementById('rows-container').innerHTML = '';
-        rowCount = 0;
-        addRow();
+        setTimeout(() => {
+          document.getElementById('confirm-view').style.display = 'none';
+          document.getElementById('form-view').style.display = 'block';
+          document.getElementById('persons-container').innerHTML = '';
+          personCount = 0;
+          Object.keys(jobCountMap).forEach(k => delete jobCountMap[k]);
+          pendingRows = [];
+          document.getElementById('form-message').textContent = '';
+          addPerson();
+        }, 2000);
       } catch (err) {
         msg.textContent = `❌ ${err.message}`;
         msg.className = 'error';
-      } finally {
         btn.disabled = false;
       }
     }

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>案件入力フォーム</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif; background: #f5f5f5; padding: 16px; }
+    h1 { font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 16px; color: #06c755; }
+    .row-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .row-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .row-number { font-size: 13px; font-weight: bold; color: #666; }
+    .remove-btn { background: none; border: none; color: #e74c3c; font-size: 18px; cursor: pointer; padding: 0 4px; }
+    .field { margin-bottom: 8px; }
+    label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+    select, input[type="text"], input[type="number"], input[type="date"] {
+      width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+    }
+    .add-btn { display: block; width: 100%; padding: 10px; background: #fff; border: 2px dashed #06c755; border-radius: 8px; color: #06c755; font-size: 14px; cursor: pointer; margin-bottom: 16px; }
+    .submit-btn { display: block; width: 100%; padding: 14px; background: #06c755; border: none; border-radius: 8px; color: #fff; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .submit-btn:disabled { background: #aaa; cursor: not-allowed; }
+    #message { margin-top: 12px; text-align: center; font-size: 14px; color: #333; min-height: 20px; }
+    .error { color: #e74c3c; }
+    #loading { text-align: center; padding: 40px; color: #666; }
+  </style>
+</head>
+<body>
+  <div id="loading">読み込み中...</div>
+  <div id="app" style="display:none">
+    <h1>案件入力フォーム</h1>
+    <div id="rows-container"></div>
+    <button class="add-btn" onclick="addRow()">＋ 行を追加（最大10件）</button>
+    <button class="submit-btn" id="submit-btn" onclick="submitForm()">送 信</button>
+    <p id="message"></p>
+  </div>
+
+  <script>
+    const GAS_URL = '<?= gasUrl ?>';
+    const LIFF_ID = '<?= liffId ?>';
+
+    let liffProfile = null;
+    let masterData = { jobNames: [], dancerNames: [] };
+    let rowCount = 0;
+
+    function debugLog(msg) {
+      const el = document.getElementById('loading');
+      el.textContent = msg;
+      console.log('[DEBUG]', msg);
+    }
+
+    async function init() {
+      try {
+        debugLog('LIFF初期化中... ID=' + LIFF_ID);
+        await liff.init({ liffId: LIFF_ID });
+
+        debugLog('LIFF初期化完了 isInClient=' + liff.isInClient() + ' isLoggedIn=' + liff.isLoggedIn());
+
+        if (!liff.isInClient() && !liff.isLoggedIn()) {
+          debugLog('ログインへリダイレクト中...');
+          liff.login();
+          return;
+        }
+
+        debugLog('プロフィール取得中...');
+        try {
+          liffProfile = await liff.getProfile();
+          debugLog('プロフィール取得完了: ' + liffProfile.displayName);
+        } catch (e) {
+          debugLog('プロフィール取得スキップ: ' + e.message);
+        }
+
+        debugLog('マスタデータ取得中...');
+        const res = await fetch(`${GAS_URL}?action=getMaster`);
+        const json = await res.json();
+        if (json.ok) {
+          masterData = json.data;
+          debugLog('マスタ取得完了: 案件=' + masterData.jobNames.length + '件 ダンサー=' + masterData.dancerNames.length + '件');
+        }
+
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        addRow();
+      } catch (err) {
+        document.getElementById('loading').textContent = '❌ エラー: ' + err.message;
+      }
+    }
+
+    function addRow() {
+      if (rowCount >= 10) return;
+      rowCount++;
+      const n = rowCount;
+
+      const today = new Date();
+      const dateVal = today.toISOString().split('T')[0];
+
+      const jobOptions = masterData.jobNames
+        .map(j => `<option value="${j}">${j}</option>`).join('');
+      const dancerOptions = masterData.dancerNames
+        .map(d => `<option value="${d}">${d}</option>`).join('');
+
+      const card = document.createElement('div');
+      card.className = 'row-card';
+      card.id = `row-${n}`;
+      card.innerHTML = `
+        <div class="row-header">
+          <span class="row-number">${n}件目</span>
+          ${n > 1 ? `<button class="remove-btn" onclick="removeRow(${n})">✕</button>` : ''}
+        </div>
+        <div class="field">
+          <label>日程</label>
+          <input type="date" id="date-${n}" value="${dateVal}" required>
+        </div>
+        <div class="field">
+          <label>案件名</label>
+          <select id="job-${n}" required>
+            <option value="">選択してください</option>
+            ${jobOptions}
+          </select>
+        </div>
+        <div class="field">
+          <label>名前</label>
+          <select id="name-${n}" required>
+            <option value="">選択してください</option>
+            ${dancerOptions}
+          </select>
+        </div>
+        <div class="field">
+          <label>数量</label>
+          <input type="number" id="qty-${n}" value="1" min="1" required>
+        </div>
+        <div class="field">
+          <label>詳細（任意）</label>
+          <input type="text" id="detail-${n}" placeholder="任意">
+        </div>
+      `;
+      document.getElementById('rows-container').appendChild(card);
+    }
+
+    function removeRow(n) {
+      const el = document.getElementById(`row-${n}`);
+      if (el) el.remove();
+    }
+
+    async function submitForm() {
+      const btn = document.getElementById('submit-btn');
+      const msg = document.getElementById('message');
+      btn.disabled = true;
+      msg.textContent = '送信中...';
+      msg.className = '';
+
+      try {
+        const cards = document.querySelectorAll('.row-card');
+        const rows = [];
+
+        for (const card of cards) {
+          const n = card.id.replace('row-', '');
+          const rawDate = document.getElementById(`date-${n}`).value;
+          const date = rawDate.replace(/-/g, '/');
+          const jobName = document.getElementById(`job-${n}`).value;
+          const name = document.getElementById(`name-${n}`).value;
+          const qty = Number(document.getElementById(`qty-${n}`).value);
+          const detail = document.getElementById(`detail-${n}`).value;
+
+          if (!date || !jobName || !name || !qty) {
+            throw new Error(`${n}件目: 必須項目を入力してください`);
+          }
+          rows.push({ date, jobName, name, qty, detail });
+        }
+
+        const payload = {
+          userId: liffProfile ? liffProfile.userId : null,
+          rows
+        };
+
+        const res = await fetch(GAS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+
+        if (!json.ok) throw new Error(json.error || '送信に失敗しました');
+
+        msg.textContent = `✅ ${json.count}件を送信しました（${json.date}）`;
+        document.getElementById('rows-container').innerHTML = '';
+        rowCount = 0;
+        addRow();
+      } catch (err) {
+        msg.textContent = `❌ ${err.message}`;
+        msg.className = 'error';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
