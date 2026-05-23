@@ -76,31 +76,24 @@ function handleSubmission(e) {
  * @returns {string}
  */
 function buildSubmissionMessage(rows, sheetUrl) {
-  // 人物（名前＋日付）ごとにグループ化
+  // 人物・日付ごとにグループ化
   const groups = {};
   rows.forEach(function(row) {
-    const key = row.name + '__' + row.date;
-    if (!groups[key]) groups[key] = { name: row.name, date: row.date, jobs: [] };
+    const key = row.date + '__' + row.name;
+    if (!groups[key]) groups[key] = { date: row.date, name: row.name, jobs: [] };
     groups[key].jobs.push(row);
   });
 
-  let grandTotal = 0;
-  const lines = ['✅ ' + rows.length + '件を追加しました'];
+  const lines = [];
+  lines.push('✅ ' + rows.length + '件を追加しました\n');
 
   Object.values(groups).forEach(function(g) {
-    lines.push('');
     lines.push('【' + g.date + '】' + g.name);
     g.jobs.forEach(function(j) {
-      const total = j.unitPrice * j.qty;
-      grandTotal += total;
-      const detail = j.detail ? '（' + j.detail + '）' : '';
-      lines.push('・' + j.jobName + detail + ' ×' + j.qty + '  ¥' + total.toLocaleString());
+      lines.push('・' + j.jobName + ' ×' + j.qty);
     });
+    lines.push('');
   });
 
-  lines.push('');
-  lines.push('合計：¥' + grandTotal.toLocaleString());
-  lines.push(sheetUrl);
-
-  return lines.join('\n');
+  return lines.join('\n').trim();
 }
