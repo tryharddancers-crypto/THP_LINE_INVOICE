@@ -48,7 +48,15 @@ function getMasterData() {
   // ダンサーマスタ: A=芸名
   const dancerSheet = ss.getSheetByName('ダンサーマスタ');
   const dancerData = dancerSheet.getDataRange().getValues();
-  const dancerNames = dancerData.slice(1).map(row => row[0]).filter(v => v !== '');
+  let dancerNames = dancerData.slice(1).map(row => String(row[0])).filter(v => v !== '');
+
+  // 判定表シートが存在する場合は、両方に合致する人物のみを抽出する
+  const judgeSheet = ss.getSheetByName('判定表');
+  if (judgeSheet) {
+    const judgeData = judgeSheet.getDataRange().getValues();
+    const judgeNames = new Set(judgeData.map(row => String(row[1] || '')).filter(v => v !== '' && v !== '芸名'));
+    dancerNames = dancerNames.filter(name => judgeNames.has(name));
+  }
 
   return { jobList, dancerNames };
 }
@@ -76,3 +84,5 @@ function fillDancerMasterToSheet(sheet) {
     sheet.getRange(row, 16).setValue(d[9]); // 住所
   });
 }
+
+

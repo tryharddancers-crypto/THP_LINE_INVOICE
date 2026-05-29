@@ -5,23 +5,34 @@
  */
 function getOrCreateMonthlySpreadsheet(date) {
   const props = PropertiesService.getScriptProperties();
-  const folderId = props.getProperty('MONTHLY_FOLDER_ID');
+  const rootFolderId = props.getProperty('MONTHLY_FOLDER_ID');
   const templateId = props.getProperty('TEMPLATE_SPREADSHEET_ID');
-  if (!folderId) throw new Error('MONTHLY_FOLDER_ID is not set');
+  if (!rootFolderId) throw new Error('MONTHLY_FOLDER_ID is not set');
   if (!templateId) throw new Error('TEMPLATE_SPREADSHEET_ID is not set');
 
-  const fileName = getMonthlyFileName(date);
-  const folder = DriveApp.getFolderById(folderId);
+  const rootFolder = DriveApp.getFolderById(rootFolderId);
+  const yearName = date.getFullYear() + '年';
 
-  // 既存ファイルを検索
-  const files = folder.getFilesByName(fileName);
+  // 年フォルダを取得、なければ作成
+  let yearFolder;
+  const yearFolders = rootFolder.getFoldersByName(yearName);
+  if (yearFolders.hasNext()) {
+    yearFolder = yearFolders.next();
+  } else {
+    yearFolder = rootFolder.createFolder(yearName);
+  }
+
+  const fileName = getMonthlyFileName(date);
+
+  // 年フォルダ内で既存ファイルを検索
+  const files = yearFolder.getFilesByName(fileName);
   if (files.hasNext()) {
     return SpreadsheetApp.open(files.next());
   }
 
-  // テンプレートをコピーして新規作成
+  // テンプレートをコピーして新規作成（保存先は年フォルダ）
   const templateFile = DriveApp.getFileById(templateId);
-  const newFile = templateFile.makeCopy(fileName, folder);
+  const newFile = templateFile.makeCopy(fileName, yearFolder);
   const newSs = SpreadsheetApp.open(newFile);
 
   // 外注連絡票シートのタイトルと日付を設定
@@ -81,17 +92,34 @@ function appendRowsToInputSheet(ss, rows) {
 
     // シートの数式（ARRAYFORMULA等）を上書きしないよう、黄色い範囲（入力専用列）にのみ書き込む
     // sheet.getRange(r,  2).setValue(team);               // B: team(判定) -> 自動計算
+
+    sheet.getRange(r,  3).clearDataValidations();
     sheet.getRange(r,  3).setValue(row.date);            // C: 日程
+
+    sheet.getRange(r,  4).clearDataValidations();
     sheet.getRange(r,  4).setValue(weekday);             // D: 曜日
+
     // sheet.getRange(r,  5).setValue(kin.venue    || ''); // E: 現場 -> 自動計算
     // sheet.getRange(r,  6).setValue(kin.category || ''); // F: 項目 -> 自動計算
+
+    sheet.getRange(r,  7).clearDataValidations();
     sheet.getRange(r,  7).setValue(row.jobName);         // G: 案件名
-    sheet.getRange(r, 10).setValue(row.detail   || ''); // J: 詳細
+
+    sheet.getRange(r, 10).clearDataValidations();
+    sheet.getRange(r, 10).setValue(row.detail   || '');  // J: 詳細
+
+    sheet.getRange(r, 11).clearDataValidations();
     sheet.getRange(r, 11).setValue(row.name);            // K: 名前
+
+    sheet.getRange(r, 12).clearDataValidations();
     sheet.getRange(r, 12).setValue(row.qty);             // L: 数量
+
     // sheet.getRange(r, 13).setValue(unit);                // M: 単価 -> 自動計算
     // sheet.getRange(r, 14).setValue(total);               // N: 合計金額 -> 自動計算
   });
+
+  // 書き込みを確実にシートに反映させる
+  SpreadsheetApp.flush();
 }
 
 /**

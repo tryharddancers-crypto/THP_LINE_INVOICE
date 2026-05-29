@@ -60,10 +60,27 @@ function handleSubmission(e) {
   const ss = getOrCreateMonthlySpreadsheet(date);
   appendRowsToInputSheet(ss, enrichedRows);
 
+  // ▼ 書き込んだデータを確実にスプレッドシートに反映させる
+  SpreadsheetApp.flush();
+  Utilities.sleep(1000);
+
   // LINE通知（送信内容の詳細を含む）
-  const message = buildSubmissionMessage(enrichedRows, ss.getUrl());
+  const liffId = PropertiesService.getScriptProperties().getProperty('LIFF_ID') || '2009725727-3jvV9g52';
+  const liffUrl = 'https://liff.line.me/' + liffId;
+  const message = buildSubmissionMessage(enrichedRows, liffUrl);
   if (userId) {
     sendLineMessage(userId, message);
+  }
+
+  // フォーム送信直後に、入力された人物ごとの明細PDF（その日の分）を生成してメール送信する
+  try {
+    const targetDateStr = enrichedRows[0].date; // フォームから送信された日付(例: "2026/05/25")
+    const uniqueNames = [...new Set(enrichedRows.map(row => row.name).filter(Boolean))];
+    uniqueNames.forEach(name => {
+      sendPdfForPerson(ss, name, targetDateStr);
+    });
+  } catch (err) {
+    console.error('PDF自動送信中にエラー: ' + err.message);
   }
 
   return { ok: true, count: rows.length, date: enrichedRows[0].date };
@@ -72,10 +89,10 @@ function handleSubmission(e) {
 /**
  * 送信内容を人物・案件ごとに整形したLINEメッセージを生成する
  * @param {object[]} rows
- * @param {string} sheetUrl
+ * @param {string} liffUrl
  * @returns {string}
  */
-function buildSubmissionMessage(rows, sheetUrl) {
+function buildSubmissionMessage(rows, liffUrl) {
   // 人物・日付ごとにグループ化
   const groups = {};
   rows.forEach(function(row) {
@@ -94,6 +111,10 @@ function buildSubmissionMessage(rows, sheetUrl) {
     });
     lines.push('');
   });
+
+  lines.push('次回の入力もよろしくお願いします。');
+  lines.push('▼ 入力フォーム(LIFF)のURL');
+  lines.push(liffUrl);
 
   return lines.join('\n').trim();
 }

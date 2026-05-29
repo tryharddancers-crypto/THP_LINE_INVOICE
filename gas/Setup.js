@@ -80,6 +80,8 @@ function _setupDancerMaster(excelSs, masterSs) {
 
   // ── ダンサーデータを抽出 ─────────────────────────────────────
   const dancers = [];
+  const processedNames = new Set();
+
   for (let i = headerRow + 1; i < srcData.length; i++) {
     const row = srcData[i];
     const membership = row[1];  // A列: 在籍
@@ -88,6 +90,7 @@ function _setupDancerMaster(excelSs, masterSs) {
     const realName   = row[4];  // D列: 氏名(本名)
 
     if (!stageName || stageName === '') continue; // 空行はスキップ
+    if (!judgeMap[stageName]) continue; // 判定表に存在しない人物はスキップ
 
     // 住所: col16='〒', col17=郵便番号, col18=番地
     const zip     = row[17] ? String(row[17]).replace(/\.0$/, '') : '';
