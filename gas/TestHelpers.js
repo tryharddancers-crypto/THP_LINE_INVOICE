@@ -38,13 +38,39 @@ function testLookupUnitPrice() {
 
 function testGetMasterData() {
   const data = getMasterData();
-  if (!data.jobNames || data.jobNames.length === 0) {
-    throw new Error('getMasterData: jobNames is empty');
+  if (!data.jobList || data.jobList.length === 0) {
+    throw new Error('getMasterData: jobList is empty');
   }
   if (!data.dancerNames || data.dancerNames.length === 0) {
     throw new Error('getMasterData: dancerNames is empty');
   }
-  Logger.log('testGetMasterData: PASSED, jobs=' + data.jobNames.length + ', dancers=' + data.dancerNames.length);
+  Logger.log('testGetMasterData: PASSED, jobs=' + data.jobList.length + ', dancers=' + data.dancerNames.length);
+}
+
+/**
+ * THP環境への移管後に、必要なGoogle資産へアクセスできるかを確認する
+ * データの書き込みやメール送信は行わない
+ */
+function verifyTHPMigrationAccess() {
+  const props = PropertiesService.getScriptProperties();
+  const templateId = props.getProperty('TEMPLATE_SPREADSHEET_ID');
+  const folderId = props.getProperty('MONTHLY_FOLDER_ID');
+  if (!templateId || !folderId) {
+    throw new Error('月次テンプレートまたは月次保存フォルダの設定がありません');
+  }
+
+  const data = getMasterData();
+  const templateName = DriveApp.getFileById(templateId).getName();
+  const folderName = DriveApp.getFolderById(folderId).getName();
+  const remainingMailQuota = MailApp.getRemainingDailyQuota();
+
+  Logger.log(
+    'THP移管確認: PASSED / 案件=' + data.jobList.length
+    + '件 / 担当者=' + data.dancerNames.length
+    + '件 / テンプレート=' + templateName
+    + ' / 保存先=' + folderName
+    + ' / メール残数=' + remainingMailQuota
+  );
 }
 
 function testGetOrCreateMonthlySheet() {

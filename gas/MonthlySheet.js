@@ -27,7 +27,9 @@ function getOrCreateMonthlySpreadsheet(date) {
   // 年フォルダ内で既存ファイルを検索
   const files = yearFolder.getFilesByName(fileName);
   if (files.hasNext()) {
-    return SpreadsheetApp.open(files.next());
+    const existingSs = SpreadsheetApp.open(files.next());
+    syncMonthlyJobMaster_(existingSs);
+    return existingSs;
   }
 
   // テンプレートをコピーして新規作成（保存先は年フォルダ）
@@ -42,32 +44,22 @@ function getOrCreateMonthlySpreadsheet(date) {
     fillDancerMasterToSheet(invoiceSheet);
   }
 
+  syncMonthlyJobMaster_(newSs);
+
   return newSs;
 }
 
 /**
  * 入力表シートに複数行を追記する
- * B/D/E/F/M/N 列をすべてGASで計算して書き込む（シート数式に依存しない）
+ * B/E/F/M/N 列は月次シート内の数式で自動計算する
  * 列: B=team, C=日程, D=曜日, E=現場, F=項目, G=案件名, J=詳細, K=名前, L=数量, M=単価, N=合計
+ * @returns {{startRow: number, endRow: number, rowNumbers: number[]}} 追記した行情報
  */
 function appendRowsToInputSheet(ss, rows) {
   const sheet = ss.getSheetByName('2.入力表');
-
-  // ── 金額シート: N=案件名, O=現場, P=単価, Q=項目 ──
-  const kinSheet = ss.getSheetByName('金額');
-  const kinData  = kinSheet.getRange('N3:Q62').getValues();
-  const kinMap   = {};
-  kinData.forEach(function(r) {
-    if (r[0]) kinMap[String(r[0])] = { venue: String(r[1]||''), unitPrice: Number(r[2])||0, category: String(r[3]||'') };
-  });
-
-  // ── 判定表シート: B=名前, G=team(6列目) ──
-  const teamSheet = ss.getSheetByName('判定表');
-  const teamData  = teamSheet.getRange('B3:G108').getValues();
-  const teamMap   = {};
-  teamData.forEach(function(r) {
-    if (r[0]) teamMap[String(r[0])] = String(r[5]||'');
-  });
+  if (!sheet) {
+    throw new Error('「2.入力表」シートが見つかりません');
+  }
 
   var DAY = ['日','月','火','水','木','金','土'];
   
@@ -83,15 +75,10 @@ function appendRowsToInputSheet(ss, rows) {
 
   rows.forEach(function(row, i) {
     var r       = startRow + i;
-    var kin     = kinMap[row.jobName] || {};
-    var unit    = kin.unitPrice || row.unitPrice || 0;
-    var total   = row.qty * unit;
-    var team    = teamMap[row.name] || '';
     var d       = new Date(row.date.replace(/\//g, '-'));
     var weekday = DAY[d.getDay()];
-
-    // シートの数式（ARRAYFORMULA等）を上書きしないよう、黄色い範囲（入力専用列）にのみ書き込む
-    // sheet.getRange(r,  2).setValue(team);               // B: team(判定) -> 自動計算
+    var jobName = String(row.jobName || '').trim();
+    var name    = String(row.name || '').trim();
 
     sheet.getRange(r,  3).clearDataValidations();
     sheet.getRange(r,  3).setValue(row.date);            // C: 日程
@@ -99,27 +86,190 @@ function appendRowsToInputSheet(ss, rows) {
     sheet.getRange(r,  4).clearDataValidations();
     sheet.getRange(r,  4).setValue(weekday);             // D: 曜日
 
-    // sheet.getRange(r,  5).setValue(kin.venue    || ''); // E: 現場 -> 自動計算
-    // sheet.getRange(r,  6).setValue(kin.category || ''); // F: 項目 -> 自動計算
-
     sheet.getRange(r,  7).clearDataValidations();
-    sheet.getRange(r,  7).setValue(row.jobName);         // G: 案件名
+    sheet.getRange(r,  7).setValue(jobName);             // G: 案件名
 
     sheet.getRange(r, 10).clearDataValidations();
     sheet.getRange(r, 10).setValue(row.detail   || '');  // J: 詳細
 
     sheet.getRange(r, 11).clearDataValidations();
-    sheet.getRange(r, 11).setValue(row.name);            // K: 名前
+    sheet.getRange(r, 11).setValue(name);                // K: 名前
 
     sheet.getRange(r, 12).clearDataValidations();
     sheet.getRange(r, 12).setValue(row.qty);             // L: 数量
-
-    // sheet.getRange(r, 13).setValue(unit);                // M: 単価 -> 自動計算
-    // sheet.getRange(r, 14).setValue(total);               // N: 合計金額 -> 自動計算
   });
 
   // 書き込みを確実にシートに反映させる
   SpreadsheetApp.flush();
+
+  return {
+    startRow: startRow,
+    endRow: startRow + rows.length - 1,
+    rowNumbers: rows.map(function(_, i) { return startRow + i; })
+  };
+}
+
+/**
+ * 月次シート内の案件マスタを、最新の本体マスタに同期する
+ * 2.入力表の数式は月次内「案件マスタ」A3:D を参照しているため、データ開始行を3行目に揃える
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} monthlySs
+ */
+function syncMonthlyJobMaster_(monthlySs) {
+  const masterSs = getMasterSpreadsheet();
+  const srcSheet = masterSs.getSheetByName('案件マスタ');
+  if (!srcSheet) {
+    throw new Error('マスタスプレッドシートに「案件マスタ」シートがありません');
+  }
+
+  let dstSheet = monthlySs.getSheetByName('案件マスタ');
+  if (!dstSheet) {
+    dstSheet = monthlySs.insertSheet('案件マスタ');
+  }
+
+  const srcLastRow = srcSheet.getLastRow();
+  const jobs = srcLastRow >= 2
+    ? srcSheet.getRange(2, 1, srcLastRow - 1, 4).getValues()
+      .filter(function(row) { return String(row[0] || '').trim() !== ''; })
+    : [];
+
+  dstSheet.getRange(1, 1, 1, 4).setValues([['案件名', '現場コード', '単価', '項目区分']]);
+
+  const clearRows = Math.max(dstSheet.getLastRow() - 1, jobs.length + 1, 1);
+  dstSheet.getRange(2, 1, clearRows, 4).clearContent();
+
+  if (jobs.length > 0) {
+    dstSheet.getRange(3, 1, jobs.length, 4).setValues(jobs);
+  }
+}
+
+/**
+ * マスタの外注連絡票から、芸名ごとのメールアドレスを取得する
+ * @returns {Object<string, string>} {芸名: メールアドレス}
+ */
+function getDancerEmailMap_() {
+  return getOutsourceContactEmailMap_();
+}
+
+/**
+ * 追記した行のC〜N列を読み取る
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss 対象の月次スプレッドシート
+ * @param {number[]} rowNumbers 追記した行番号
+ * @returns {Object[]} C〜N列の値を持つ行データ
+ */
+function readInsertedInputRows_(ss, rowNumbers) {
+  const sheet = ss.getSheetByName('2.入力表');
+  if (!sheet) {
+    throw new Error('「2.入力表」シートが見つかりません');
+  }
+  if (!rowNumbers || rowNumbers.length === 0) {
+    return [];
+  }
+
+  return rowNumbers.map(function(rowNumber) {
+    const values = sheet.getRange(rowNumber, 3, 1, 12).getValues()[0]; // C:N
+    return {
+      rowNumber: rowNumber,
+      date: values[0],
+      weekday: values[1],
+      venue: values[2],
+      category: values[3],
+      jobName: values[4],
+      h: values[5],
+      i: values[6],
+      detail: values[7],
+      name: String(values[8] || '').trim(),
+      qty: values[9],
+      unitPrice: values[10],
+      total: values[11]
+    };
+  }).filter(function(row) {
+    return row.name !== '';
+  });
+}
+
+/**
+ * 追記した入力行の内容を、担当者ごとにメール通知する
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss 対象の月次スプレッドシート
+ * @param {number[]} rowNumbers 追記した行番号
+ */
+function sendInputRowsNotification_(ss, rowNumbers) {
+  const insertedRows = readInsertedInputRows_(ss, rowNumbers);
+  if (insertedRows.length === 0) {
+    Logger.log('入力内容メール通知: 通知対象行がありません');
+    return;
+  }
+
+  const emailMap = getDancerEmailMap_();
+  const grouped = {};
+  insertedRows.forEach(function(row) {
+    if (!grouped[row.name]) grouped[row.name] = [];
+    grouped[row.name].push(row);
+  });
+
+  Object.keys(grouped).forEach(function(name) {
+    const email = emailMap[name];
+    if (!email) {
+      Logger.log('入力内容メール通知スキップ: ' + name + ' のメールアドレスが外注連絡票U列にありません');
+      return;
+    }
+
+    const rows = grouped[name];
+    const subject = '【確認】案件入力内容を受け付けました';
+    const body = buildInputRowsNotificationBody_(ss, name, rows);
+    try {
+      GmailApp.sendEmail(email, subject, body, { name: '管理事務局' });
+      Logger.log('入力内容メール通知送信: ' + name + ' <' + email + '> ' + rows.length + '件');
+    } catch (e) {
+      Logger.log('入力内容メール通知失敗: ' + name + ' / ' + e.message);
+    }
+  });
+}
+
+/**
+ * 入力内容通知メールの本文を作成する
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss 対象の月次スプレッドシート
+ * @param {string} name 担当者名
+ * @param {Object[]} rows 担当者ごとの入力行
+ * @returns {string} メール本文
+ */
+function buildInputRowsNotificationBody_(ss, name, rows) {
+  const lines = [];
+  lines.push(name + ' 様');
+  lines.push('');
+  lines.push('お疲れ様です。');
+  lines.push('フォームより送信された案件入力内容を受け付けました。');
+  lines.push('');
+
+  rows.forEach(function(row, index) {
+    lines.push('【入力内容 ' + (index + 1) + '】');
+    lines.push('日程: ' + formatMailValue_(row.date));
+    lines.push('曜日: ' + formatMailValue_(row.weekday));
+    lines.push('現場: ' + formatMailValue_(row.venue));
+    lines.push('項目: ' + formatMailValue_(row.category));
+    lines.push('案件名: ' + formatMailValue_(row.jobName));
+    lines.push('詳細: ' + formatMailValue_(row.detail));
+    lines.push('名前: ' + formatMailValue_(row.name));
+    lines.push('数量: ' + formatMailValue_(row.qty));
+    lines.push('単価: ' + formatMailValue_(row.unitPrice));
+    lines.push('合計: ' + formatMailValue_(row.total));
+    lines.push('');
+  });
+
+  lines.push('内容をご確認ください。');
+  return lines.join('\n');
+}
+
+/**
+ * メール本文用にセル値を表示文字列へ変換する
+ * @param {*} value セル値
+ * @returns {string}
+ */
+function formatMailValue_(value) {
+  if (value === '' || value === null || typeof value === 'undefined') return '-';
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, 'Asia/Tokyo', 'yyyy/MM/dd');
+  }
+  return String(value);
 }
 
 /**

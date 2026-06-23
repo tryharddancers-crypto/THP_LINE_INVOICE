@@ -15,30 +15,13 @@ function sendPdfsToAll() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
   
-  // 1. ダンサーマスタからメールアドレスの取得 (L列: 12列目を想定)
-  let masterSs;
+  // 1. マスタ外注連絡票からメールアドレスの取得 (U列: 21列目を想定)
+  let mailMap;
   try {
-    masterSs = getMasterSpreadsheet();
+    mailMap = getOutsourceContactEmailMap_();
   } catch (e) {
-    ui.alert('マスタスプレッドシートの取得に失敗しました: ' + e.message);
+    ui.alert('マスタ外注連絡票からメールアドレスの取得に失敗しました: ' + e.message);
     return;
-  }
-  
-  const dancerSheet = masterSs.getSheetByName('ダンサーマスタ');
-  if (!dancerSheet) {
-    ui.alert('エラー: ダンサーマスタシートが見つかりません。');
-    return;
-  }
-  
-  const dancerData = dancerSheet.getDataRange().getValues();
-  const mailMap = {}; // {名前: メールアドレス}
-  // 1行目はヘッダー
-  for (let i = 1; i < dancerData.length; i++) {
-    const name = String(dancerData[i][0]).trim(); // A列: 芸名
-    const email = String(dancerData[i][11] || '').trim(); // L列: 12番目 (index 11)
-    if (name && email) {
-      mailMap[name] = email;
-    }
   }
 
   // 2. 「2.入力表」からデータ取得
@@ -70,7 +53,7 @@ function sendPdfsToAll() {
       targetData[name] = [];
     }
     targetData[name].push({
-      date: date instanceof Date ? Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy/MM/dd') : date,
+      date: date instanceof Date ? Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd') : date,
       venue: row[2],
       category: row[3],
       jobName: row[4],
@@ -93,7 +76,7 @@ function sendPdfsToAll() {
   Object.keys(targetData).forEach(name => {
     const email = mailMap[name];
     if (!email) {
-      errorMessages.push(`・${name} 様のメールアドレスがマスタに登録されていません。`);
+      errorMessages.push(`・${name} 様のメールアドレスが外注連絡票U列に登録されていません。`);
       return; // continue
     }
     
@@ -211,33 +194,18 @@ function createPdfFromSheet(ss, sheet, pdfFileName) {
 function sendPdfForPerson(ss, targetName, targetDate) {
   if (!targetName) return;
 
-  // 1. ダンサーマスタからメールアドレスの取得 (L列: 12列目を想定)
-  let masterSs;
-  try {
-    masterSs = getMasterSpreadsheet();
-  } catch (e) {
-    console.error('マスタスプレッドシートの取得に失敗しました: ' + e.message);
-    return;
-  }
-  
-  const dancerSheet = masterSs.getSheetByName('ダンサーマスタ');
-  if (!dancerSheet) {
-    console.error('エラー: ダンサーマスタシートが見つかりません。');
-    return;
-  }
-  
-  const dancerData = dancerSheet.getDataRange().getValues();
+  // 1. マスタ外注連絡票からメールアドレスの取得 (U列: 21列目を想定)
   let email = '';
-  for (let i = 1; i < dancerData.length; i++) {
-    const name = String(dancerData[i][0]).trim();
-    if (name === targetName) {
-      email = String(dancerData[i][11] || '').trim(); // L列: 12番目 (index 11)
-      break;
-    }
+  try {
+    const mailMap = getOutsourceContactEmailMap_();
+    email = mailMap[targetName] || '';
+  } catch (e) {
+    console.error('マスタ外注連絡票からメールアドレスの取得に失敗しました: ' + e.message);
+    return;
   }
 
   if (!email) {
-    console.warn(`${targetName} 様のメールアドレスがマスタに登録されていません。送信をスキップします。`);
+    console.warn(`${targetName} 様のメールアドレスが外注連絡票U列に登録されていません。送信をスキップします。`);
     return;
   }
 
@@ -257,7 +225,7 @@ function sendPdfForPerson(ss, targetName, targetDate) {
   for (let i = 0; i < inputData.length; i++) {
     const row = inputData[i];
     let dateObj = row[0];
-    let dateStr = dateObj instanceof Date ? Utilities.formatDate(dateObj, Session.getScriptTimeZone(), 'yyyy/MM/dd') : String(dateObj);
+    let dateStr = dateObj instanceof Date ? Utilities.formatDate(dateObj, 'Asia/Tokyo', 'yyyy/MM/dd') : String(dateObj);
     const name = String(row[8] || '').trim();
     
     // targetDateが指定されている場合はその日付のみを抽出

@@ -58,11 +58,18 @@ function handleSubmission(e) {
   // 当月スプレッドシートに追記
   const date = parseDate(rows[0].date);
   const ss = getOrCreateMonthlySpreadsheet(date);
-  appendRowsToInputSheet(ss, enrichedRows);
+  const appendResult = appendRowsToInputSheet(ss, enrichedRows);
 
   // ▼ 書き込んだデータを確実にスプレッドシートに反映させる
   SpreadsheetApp.flush();
   Utilities.sleep(1000);
+
+  // 入力されたC〜N列の内容を、該当担当者のメールアドレスへ通知する
+  try {
+    sendInputRowsNotification_(ss, appendResult.rowNumbers);
+  } catch (err) {
+    Logger.log('入力内容メール通知中にエラー: ' + err.message);
+  }
 
   // LINE通知（送信内容の詳細を含む）
   const liffId = PropertiesService.getScriptProperties().getProperty('LIFF_ID') || '2009725727-3jvV9g52';
