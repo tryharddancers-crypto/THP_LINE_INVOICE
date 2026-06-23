@@ -15,8 +15,8 @@ function getMasterSpreadsheet() {
 function getOutsourceMasterSpreadsheet_() {
   const props = PropertiesService.getScriptProperties();
   const id = props.getProperty('OUTSOURCE_MASTER_SPREADSHEET_ID')
-    || '1zGicgFAXB-P_xEfU3u54Uk6yOpCf937lyIlm0F5rQAo'
-    || props.getProperty('MASTER_SPREADSHEET_ID');
+    || props.getProperty('MASTER_SPREADSHEET_ID')
+    || '1zGicgFAXB-P_xEfU3u54Uk6yOpCf937lyIlm0F5rQAo';
   if (!id) throw new Error('OUTSOURCE_MASTER_SPREADSHEET_ID is not set in script properties');
   return SpreadsheetApp.openById(id);
 }
