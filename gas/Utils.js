@@ -31,13 +31,50 @@ function getMonthlyFileName(date) {
 }
 
 /**
- * "YYYY/MM/DD" 形式の文字列をDateに変換する
+ * YYYY/MM/DD または YYYY-MM-DD を日付要素に分解する
+ * @param {string} dateStr
+ * @returns {{year: number, month: number, day: number}}
+ */
+function parseDateParts_(dateStr) {
+  const match = String(dateStr || '').trim().match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (!match) {
+    throw new Error('日付の形式が正しくありません: ' + dateStr);
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (
+    check.getUTCFullYear() !== year
+    || check.getUTCMonth() !== month - 1
+    || check.getUTCDate() !== day
+  ) {
+    throw new Error('存在しない日付です: ' + dateStr);
+  }
+
+  return { year: year, month: month, day: day };
+}
+
+/**
+ * 日付文字列をタイムゾーンの影響を受けにくいDateに変換する
  * @param {string} dateStr
  * @returns {Date}
  */
 function parseDate(dateStr) {
-  const [y, m, d] = dateStr.split('/').map(Number);
-  return new Date(y, m - 1, d);
+  const parts = parseDateParts_(dateStr);
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12));
+}
+
+/**
+ * 日付文字列から曜日を返す
+ * @param {string} dateStr
+ * @returns {string}
+ */
+function getWeekday_(dateStr) {
+  const parts = parseDateParts_(dateStr);
+  const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+  return dayNames[new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay()];
 }
 
 /**

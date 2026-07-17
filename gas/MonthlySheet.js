@@ -61,8 +61,6 @@ function appendRowsToInputSheet(ss, rows) {
     throw new Error('「2.入力表」シートが見つかりません');
   }
 
-  var DAY = ['日','月','火','水','木','金','土'];
-  
   // 本当の最終行（C列が空欄の最初の行）を探す
   var cValues = sheet.getRange('C1:C1000').getValues();
   var startRow = 8; // 8行目からデータ入力開始
@@ -75,13 +73,13 @@ function appendRowsToInputSheet(ss, rows) {
 
   rows.forEach(function(row, i) {
     var r       = startRow + i;
-    var d       = new Date(row.date.replace(/\//g, '-'));
-    var weekday = DAY[d.getDay()];
+    var d       = parseDate(row.date);
+    var weekday = getWeekday_(row.date);
     var jobName = String(row.jobName || '').trim();
     var name    = String(row.name || '').trim();
 
     sheet.getRange(r,  3).clearDataValidations();
-    sheet.getRange(r,  3).setValue(row.date);            // C: 日程
+    sheet.getRange(r,  3).setValue(d).setNumberFormat('yyyy/m/d'); // C: 日程
 
     sheet.getRange(r,  4).clearDataValidations();
     sheet.getRange(r,  4).setValue(weekday);             // D: 曜日

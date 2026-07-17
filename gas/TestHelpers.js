@@ -27,6 +27,27 @@ function testGetMonthlyFileName() {
   Logger.log('testGetMonthlyFileName: PASSED');
 }
 
+function testDateOnlyHandling() {
+  const cases = [
+    { input: '2026/06/10', expectedDate: '2026/06/10', expectedWeekday: '水' },
+    { input: '2026-06-11', expectedDate: '2026/06/11', expectedWeekday: '木' }
+  ];
+
+  cases.forEach(function(testCase) {
+    const date = parseDate(testCase.input);
+    const formatted = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd');
+    const weekday = getWeekday_(testCase.input);
+    if (formatted !== testCase.expectedDate || weekday !== testCase.expectedWeekday) {
+      throw new Error(
+        'date handling failed: ' + testCase.input
+        + ' => ' + formatted + ' (' + weekday + ')'
+      );
+    }
+  });
+
+  Logger.log('testDateOnlyHandling: PASSED');
+}
+
 function testLookupUnitPrice() {
   // MASTER_SPREADSHEET_IDが設定済みの状態でテスト
   const price = lookupUnitPrice('OWL TIP');
@@ -119,6 +140,7 @@ function testDoPostSimulation() {
 function runAllTests() {
   testToWareki();
   testGetMonthlyFileName();
+  testDateOnlyHandling();
   Logger.log('=== Utils tests PASSED ===');
   // 以下はスプレッドシートIDが設定済みの場合のみ実行
   // testLookupUnitPrice();
