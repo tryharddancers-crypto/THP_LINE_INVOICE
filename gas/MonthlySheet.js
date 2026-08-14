@@ -55,21 +55,42 @@ function getOrCreateMonthlySpreadsheet(date) {
  * 列: B=team, C=日程, D=曜日, E=現場, F=項目, G=案件名, J=詳細, K=名前, L=数量, M=単価, N=合計
  * @returns {{startRow: number, endRow: number, rowNumbers: number[]}} 追記した行情報
  */
+function hasInputRowData_(values) {
+  // C, D, G, J, K, L are the fields written directly by the form.
+  const inputColumnOffsets = [0, 1, 4, 7, 8, 9];
+  return inputColumnOffsets.some(function(offset) {
+    const value = values[offset];
+    return value !== '' && value !== null;
+  });
+}
+
+function findNextInputRow_(sheet) {
+  const firstDataRow = 8;
+  const lastSheetRow = Math.max(sheet.getLastRow(), firstDataRow);
+  const values = sheet.getRange(
+    firstDataRow,
+    3,
+    lastSheetRow - firstDataRow + 1,
+    10
+  ).getValues(); // C:L
+
+  for (var i = values.length - 1; i >= 0; i--) {
+    if (hasInputRowData_(values[i])) {
+      return firstDataRow + i + 1;
+    }
+  }
+
+  return firstDataRow;
+}
+
 function appendRowsToInputSheet(ss, rows) {
   const sheet = ss.getSheetByName('2.入力表');
   if (!sheet) {
     throw new Error('「2.入力表」シートが見つかりません');
   }
 
-  // 本当の最終行（C列が空欄の最初の行）を探す
-  var cValues = sheet.getRange('C1:C1000').getValues();
-  var startRow = 8; // 8行目からデータ入力開始
-  for (var j = 7; j < cValues.length; j++) { // j=7 は8行目(C8)を指す
-    if (cValues[j][0] === '' || cValues[j][0] === null) {
-      startRow = j + 1;
-      break;
-    }
-  }
+  // Do not reuse a populated row merely because its date cell is blank.
+  var startRow = findNextInputRow_(sheet);
 
   rows.forEach(function(row, i) {
     var r       = startRow + i;

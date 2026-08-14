@@ -48,6 +48,20 @@ function testDateOnlyHandling() {
   Logger.log('testDateOnlyHandling: PASSED');
 }
 
+function testInputRowOccupancy() {
+  const blankRow = ['', '', '', '', '', '', '', '', '', ''];
+  const missingDateButPopulated = ['', '月', '', '', 'OWL TIP', '', '', '', 'テスト', 1];
+
+  if (hasInputRowData_(blankRow)) {
+    throw new Error('blank input row must not be treated as occupied');
+  }
+  if (!hasInputRowData_(missingDateButPopulated)) {
+    throw new Error('a populated row with a blank date must be treated as occupied');
+  }
+
+  Logger.log('testInputRowOccupancy: PASSED');
+}
+
 function testLookupUnitPrice() {
   // MASTER_SPREADSHEET_IDが設定済みの状態でテスト
   const price = lookupUnitPrice('OWL TIP');
@@ -141,6 +155,7 @@ function runAllTests() {
   testToWareki();
   testGetMonthlyFileName();
   testDateOnlyHandling();
+  testInputRowOccupancy();
   Logger.log('=== Utils tests PASSED ===');
   // 以下はスプレッドシートIDが設定済みの場合のみ実行
   // testLookupUnitPrice();
