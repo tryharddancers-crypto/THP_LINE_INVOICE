@@ -9,20 +9,24 @@ function runSystemHealthCheck_() {
     const jobSheet = masterSs.getSheetByName('案件マスタ');
     if (!jobSheet) throw new Error('「案件マスタ」シートがありません');
 
-    const jobs = jobSheet.getDataRange().getValues().slice(1);
+    const jobs = readJobMasterRows_(jobSheet);
     const jobMap = {};
-    jobs.forEach(function(row, index) {
-      const name = String(row[0] || '').trim();
-      if (!name) return;
+    jobs.forEach(function(job) {
+      const name = job.name;
       jobCount += 1;
-      const price = Number(row[2]);
+      const billing = job.billing;
+      const price = Number(job.unitPrice);
+      if (!billing) {
+        issues.push('案件マスタ' + job.sourceRow + '行目の店舗名が空欄です: ' + name);
+      }
       if (!Number.isFinite(price) || price < 0) {
-        issues.push('案件マスタ' + (index + 2) + '行目の単価が不正です: ' + name);
+        issues.push('案件マスタ' + job.sourceRow + '行目の単価が不正です: ' + name);
       }
-      if (Object.prototype.hasOwnProperty.call(jobMap, name) && jobMap[name] !== price) {
-        issues.push('案件マスタに異なる単価の同名案件があります: ' + name);
+      const key = billing + '\u0000' + name;
+      if (Object.prototype.hasOwnProperty.call(jobMap, key)) {
+        issues.push('案件マスタに同じ店舗・商品が重複しています: ' + billing + ' / ' + name);
       }
-      jobMap[name] = price;
+      jobMap[key] = price;
     });
 
     const contacts = getOutsourceContacts_();

@@ -74,18 +74,32 @@ function validateSubmissionRows_(rows) {
     dancerSet[String(name).trim()] = true;
   });
 
-  const jobPrices = {};
+  const jobsByKey = {};
+  const jobsByName = {};
   (master.jobList || []).forEach(function(job) {
     const name = String(job.name || '').trim();
+    const billing = String(job.billing || '').trim();
     if (!name) return;
+    if (!billing) {
+      throw new Error('案件マスタの店舗名が空欄です: ' + name);
+    }
     const price = Number(job.unitPrice);
     if (!Number.isFinite(price) || price < 0) {
       throw new Error('案件マスタの単価が不正です: ' + name);
     }
-    if (Object.prototype.hasOwnProperty.call(jobPrices, name) && jobPrices[name] !== price) {
-      throw new Error('案件マスタに異なる単価の同名案件があります: ' + name);
+    const key = billing + '\u0000' + name;
+    if (Object.prototype.hasOwnProperty.call(jobsByKey, key)) {
+      throw new Error('案件マスタに同じ店舗・商品が重複しています: ' + billing + ' / ' + name);
     }
-    jobPrices[name] = price;
+    const normalizedJob = {
+      name: name,
+      billing: billing,
+      category: String(job.category || '').trim(),
+      unitPrice: price
+    };
+    jobsByKey[key] = normalizedJob;
+    if (!jobsByName[name]) jobsByName[name] = [];
+    jobsByName[name].push(normalizedJob);
   });
 
   let targetMonth = '';
@@ -114,8 +128,23 @@ function validateSubmissionRows_(rows) {
     }
 
     const jobName = String(row && row.jobName || '').trim();
-    if (!jobName || !Object.prototype.hasOwnProperty.call(jobPrices, jobName)) {
+    const matchingJobs = jobsByName[jobName] || [];
+    if (!jobName || matchingJobs.length === 0) {
       throw createClientError_(itemNo + '件目の商品が現在の案件マスタにありません。フォームを開き直してください。');
+    }
+
+    let billing = String(row && row.billing || '').trim();
+    if (!billing) {
+      if (matchingJobs.length === 1) {
+        // Older cached forms did not send the store. Keep unambiguous items compatible.
+        billing = matchingJobs[0].billing;
+      } else {
+        throw createClientError_(itemNo + '件目の店舗を確認できません。フォームを開き直して店舗から選び直してください。');
+      }
+    }
+    const selectedJob = jobsByKey[billing + '\u0000' + jobName];
+    if (!selectedJob) {
+      throw createClientError_(itemNo + '件目の商品は選択された店舗の案件マスタにありません。フォームを開き直してください。');
     }
 
     const qty = Number(row && row.qty);
@@ -131,10 +160,12 @@ function validateSubmissionRows_(rows) {
     return {
       date: date,
       jobName: jobName,
+      billing: selectedJob.billing,
+      category: selectedJob.category,
       name: name,
       qty: qty,
       detail: detail,
-      unitPrice: jobPrices[jobName]
+      unitPrice: selectedJob.unitPrice
     };
   });
 }

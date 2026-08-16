@@ -22,6 +22,38 @@ function getOutsourceMasterSpreadsheet_() {
 }
 
 /**
+ * Read job master rows regardless of whether the header is on row 1 or row 2.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {Object[]}
+ */
+function readJobMasterRows_(sheet) {
+  if (!sheet) throw new Error('「案件マスタ」シートがありません');
+  const values = sheet.getDataRange().getValues();
+  let headerIndex = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0] || '').trim() === '案件名') {
+      headerIndex = i;
+      break;
+    }
+  }
+  if (headerIndex < 0) {
+    throw new Error('案件マスタの「案件名」見出しが見つかりません');
+  }
+
+  return values.slice(headerIndex + 1).map(function(row, index) {
+    return {
+      sourceRow: headerIndex + index + 2,
+      name: String(row[0] || '').trim(),
+      billing: String(row[1] || '').trim(),
+      unitPrice: row[2],
+      category: String(row[3] || '').trim()
+    };
+  }).filter(function(job) {
+    return job.name !== '' && job.name !== '案件名';
+  });
+}
+
+/**
  * 案件名から単価を検索する
  * @param {string} jobName
  * @returns {number} 単価（見つからない場合は0）
@@ -29,11 +61,10 @@ function getOutsourceMasterSpreadsheet_() {
 function lookupUnitPrice(jobName) {
   const ss = getMasterSpreadsheet();
   const sheet = ss.getSheetByName('案件マスタ');
-  const data = sheet.getDataRange().getValues();
-  // 1行目はヘッダー、A列=案件名、C列=単価
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === jobName) {
-      return Number(data[i][2]) || 0;
+  const jobs = readJobMasterRows_(sheet);
+  for (let i = 0; i < jobs.length; i++) {
+    if (jobs[i].name === jobName) {
+      return Number(jobs[i].unitPrice) || 0;
     }
   }
   return 0;
@@ -95,7 +126,7 @@ function getOutsourceContactEmailMap_() {
 
 /**
  * LIFFフォームのドロップダウン用にマスタデータを返す
- * jobList: [{ name, billing, unitPrice }]
+ * jobList: [{ name, billing, unitPrice, category }]
  * @returns {{ jobList: object[], dancerNames: string[] }}
  */
 function getMasterData() {
@@ -103,13 +134,12 @@ function getMasterData() {
 
   // 案件マスタ: A=案件名, B=請求元, C=単価
   const jobSheet = ss.getSheetByName('案件マスタ');
-  const jobData = jobSheet.getDataRange().getValues();
-  const jobList = jobData.slice(1)
-    .filter(row => row[0] !== '')
-    .map(row => ({
-      name:      String(row[0]),
-      billing:   String(row[1] || 'その他'),
-      unitPrice: Number(row[2]) || 0
+  const jobList = readJobMasterRows_(jobSheet)
+    .map(job => ({
+      name:      job.name,
+      billing:   job.billing || 'その他',
+      unitPrice: Number(job.unitPrice) || 0,
+      category:  job.category
     }));
 
   // 外注連絡票: D=芸名

@@ -360,9 +360,9 @@ function createValidationHarness(options = {}) {
     getMasterData() {
       return {
         jobList: [
-          { name: 'OWL TIP', billing: 'OWL', unitPrice: 50 },
-          { name: 'WINX CA', billing: 'OWL', unitPrice: 1000 },
-          { name: 'WINX CA', billing: 'KTN', unitPrice: 1000 }
+          { name: 'OWL TIP', billing: 'OWL', unitPrice: 50, category: 'TIP' },
+          { name: 'WINX CA', billing: 'OWL', unitPrice: 1000, category: 'WINX' },
+          { name: 'WINX CA', billing: 'KTN', unitPrice: 1200, category: 'WINX' }
         ],
         dancerNames: ['TEST USER']
       };
@@ -397,10 +397,29 @@ test('invalid LINE ID token is rejected', () => {
 test('server validation replaces client prices with master prices', () => {
   const harness = createValidationHarness();
   const rows = harness.context.validateSubmissionRows_([{
-    date: '2026/08/16', name: 'TEST USER', jobName: 'OWL TIP', qty: 2, detail: '', unitPrice: 999999
+    date: '2026/08/16', billing: 'OWL', name: 'TEST USER', jobName: 'OWL TIP', qty: 2, detail: '', unitPrice: 999999
   }]);
   assert.equal(rows[0].unitPrice, 50);
   assert.equal(rows[0].date, '2026/08/16');
+  assert.equal(rows[0].billing, 'OWL');
+  assert.equal(rows[0].category, 'TIP');
+});
+
+test('server validation resolves duplicated product names by store', () => {
+  const harness = createValidationHarness();
+  const rows = harness.context.validateSubmissionRows_([{
+    date: '2026/08/16', billing: 'KTN', name: 'TEST USER', jobName: 'WINX CA', qty: 2
+  }]);
+  assert.equal(rows[0].billing, 'KTN');
+  assert.equal(rows[0].category, 'WINX');
+  assert.equal(rows[0].unitPrice, 1200);
+
+  assert.throws(() => harness.context.validateSubmissionRows_([{
+    date: '2026/08/16', name: 'TEST USER', jobName: 'WINX CA', qty: 1
+  }]), /店舗/);
+  assert.throws(() => harness.context.validateSubmissionRows_([{
+    date: '2026/08/16', billing: 'BMB', name: 'TEST USER', jobName: 'WINX CA', qty: 1
+  }]), /選択された店舗/);
 });
 
 test('server validation rejects mixed-month submissions', () => {
@@ -432,7 +451,50 @@ test('all frontend copies send a LINE ID token', () => {
     const source = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
     assert.match(source, /liff\.getIDToken\(\)/);
     assert.match(source, /idToken,/);
+    assert.match(source, /rows\.push\(\{ date, billing, jobName/);
+    assert.doesNotMatch(source, /new Date\(\)\.toISOString\(\)\.split\('T'\)\[0\]/);
   }
+});
+
+test('date utilities reject impossible dates and preserve weekdays', () => {
+  const context = vm.createContext({ Date, String, Number, Error });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/Utils.js'), 'utf8'),
+    context,
+    { filename: 'gas/Utils.js' }
+  );
+  assert.equal(context.getWeekday_('2026/08/16'), '日');
+  assert.equal(context.parseDateParts_('2024/02/29').day, 29);
+  assert.throws(() => context.parseDateParts_('2026/02/29'), /存在しない日付/);
+  assert.throws(() => context.parseDateParts_('2026/13/01'), /存在しない日付/);
+});
+
+test('job master reader finds a row-2 header and never exposes it as data', () => {
+  const context = vm.createContext({ String, Number, Error });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/MasterSheet.js'), 'utf8'),
+    context,
+    { filename: 'gas/MasterSheet.js' }
+  );
+  const sheet = {
+    getDataRange() {
+      return {
+        getValues() {
+          return [
+            ['', '', '', ''],
+            ['案件名', '現場名', '単価', '項目'],
+            ['OWL TIP', 'OWL', 50, 'TIP'],
+            ['WINX CA', 'KTN', 1200, 'WINX']
+          ];
+        }
+      };
+    }
+  };
+  const jobs = context.readJobMasterRows_(sheet);
+  assert.equal(jobs.length, 2);
+  assert.equal(jobs[0].name, 'OWL TIP');
+  assert.equal(jobs[0].sourceRow, 3);
+  assert.equal(jobs.some(job => job.name === '案件名'), false);
 });
 
 test('formula capacity protection extends rows and restores calculated columns', () => {
@@ -482,6 +544,62 @@ test('formula capacity protection extends rows and restores calculated columns',
     assert.ok(formulas.get(`11:${column}`));
     assert.ok(formulas.get(`12:${column}`));
   }
+});
+
+test('appended rows pin store, category and price from validated master data', () => {
+  const values = new Map();
+  const formulas = new Map();
+  const required = { 2: '=ROW()', 5: '=RC[2]', 6: '=RC[1]', 13: '=RC[-1]', 14: '=RC[-2]*RC[-1]' };
+  Object.entries(required).forEach(([column, formula]) => formulas.set(`8:${column}`, formula));
+
+  const sheet = {
+    getLastRow() { return 8; },
+    getMaxRows() { return 20; },
+    insertRowsAfter() {},
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      const range = {
+        getValues() {
+          return Array.from({ length: rowCount }, (_, r) =>
+            Array.from({ length: columnCount }, (_, c) => values.get(`${row + r}:${column + c}`) ?? '')
+          );
+        },
+        getFormulasR1C1() {
+          return Array.from({ length: rowCount }, (_, r) =>
+            Array.from({ length: columnCount }, (_, c) => formulas.get(`${row + r}:${column + c}`) || '')
+          );
+        },
+        copyTo() { return range; },
+        clearDataValidations() { return range; },
+        setNumberFormat() { return range; },
+        setFormulaR1C1(formula) { formulas.set(`${row}:${column}`, formula); return range; },
+        setValue(value) { values.set(`${row}:${column}`, value); return range; }
+      };
+      return range;
+    }
+  };
+  const ss = { getSheetByName(name) { return name === '2.入力表' ? sheet : null; } };
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    SpreadsheetApp: {
+      CopyPasteType: { PASTE_FORMAT: 'PASTE_FORMAT' },
+      flush() {}
+    },
+    parseDate() { return new Date(Date.UTC(2026, 7, 16, 12)); },
+    getWeekday_() { return '日'; }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/MonthlySheet.js'), 'utf8'),
+    context,
+    { filename: 'gas/MonthlySheet.js' }
+  );
+  context.appendRowsToInputSheet(ss, [{
+    date: '2026/08/16', billing: 'KTN', category: 'WINX', jobName: 'WINX CA',
+    name: 'TEST USER', qty: 2, detail: '', unitPrice: 1200
+  }]);
+  assert.equal(values.get('8:5'), 'KTN');
+  assert.equal(values.get('8:6'), 'WINX');
+  assert.equal(values.get('8:13'), 1200);
+  assert.ok(formulas.get('8:14'));
 });
 
 test('notification retry and health-check safeguards are present', () => {

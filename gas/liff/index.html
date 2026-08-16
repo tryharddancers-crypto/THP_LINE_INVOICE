@@ -209,7 +209,7 @@
               const category = job.billing || 'その他';
               if (!jobTree[category]) jobTree[category] = [];
               jobTree[category].push({ label: job.name, value: job.name });
-              priceMap[job.name] = job.unitPrice || 0;
+              priceMap[`${category}\u0000${job.name}`] = job.unitPrice || 0;
             });
           }
         }
@@ -350,7 +350,8 @@
       const qty = Number(document.getElementById(`qty-${pid}-${jid}`).value) || 1;
       const priceEl = document.getElementById(`price-${pid}-${jid}`);
       if (!jobName) { priceEl.textContent = ''; return; }
-      const unitPrice = priceMap[jobName];
+      const billing = document.getElementById(`billing-${pid}`).value;
+      const unitPrice = priceMap[`${billing}\u0000${jobName}`];
       if (unitPrice === undefined) { priceEl.textContent = '単価：不明'; return; }
       const total = unitPrice * qty;
       priceEl.textContent = `単価 ¥${unitPrice.toLocaleString()} × ${qty} = ¥${total.toLocaleString()}`;
@@ -378,10 +379,10 @@
           const jobName = document.getElementById(`jobname-${pid}-${jid}`).value;
           const qty = Number(document.getElementById(`qty-${pid}-${jid}`).value);
           const detail = document.getElementById(`detail-${pid}-${jid}`).value;
-          const unitPrice = priceMap[jobName] ?? 0;
+          const unitPrice = priceMap[`${billing}\u0000${jobName}`] ?? 0;
           if (!jobName) throw new Error(`${pid}人目 商品${jid}: 商品名を選択してください`);
           if (!qty) throw new Error(`${pid}人目 商品${jid}: 数量を入力してください`);
-          rows.push({ date, jobName, name, qty, detail, unitPrice });
+          rows.push({ date, billing, jobName, name, qty, detail, unitPrice });
         }
       }
       return rows;

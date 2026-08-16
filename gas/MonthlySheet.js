@@ -143,6 +143,12 @@ function appendRowsToInputSheet(ss, rows) {
     sheet.getRange(r,  4).clearDataValidations();
     sheet.getRange(r,  4).setValue(weekday);             // D: 曜日
 
+    // Store, category and price are fixed from the exact server-validated
+    // store/product pair. This avoids a VLOOKUP choosing another store when
+    // the same product name exists in more than one store.
+    sheet.getRange(r,  5).setValue(row.billing);         // E: 現場
+    sheet.getRange(r,  6).setValue(row.category);        // F: 項目
+
     sheet.getRange(r,  7).clearDataValidations();
     sheet.getRange(r,  7).setValue(jobName);             // G: 案件名
 
@@ -154,6 +160,7 @@ function appendRowsToInputSheet(ss, rows) {
 
     sheet.getRange(r, 12).clearDataValidations();
     sheet.getRange(r, 12).setValue(row.qty);             // L: 数量
+    sheet.getRange(r, 13).setValue(row.unitPrice);       // M: 単価
   });
 
   // 書き込みを確実にシートに反映させる
@@ -183,11 +190,9 @@ function syncMonthlyJobMaster_(monthlySs) {
     dstSheet = monthlySs.insertSheet('案件マスタ');
   }
 
-  const srcLastRow = srcSheet.getLastRow();
-  const jobs = srcLastRow >= 2
-    ? srcSheet.getRange(2, 1, srcLastRow - 1, 4).getValues()
-      .filter(function(row) { return String(row[0] || '').trim() !== ''; })
-    : [];
+  const jobs = readJobMasterRows_(srcSheet).map(function(job) {
+    return [job.name, job.billing, job.unitPrice, job.category];
+  });
 
   dstSheet.getRange(1, 1, 1, 4).setValues([['案件名', '現場コード', '単価', '項目区分']]);
 
