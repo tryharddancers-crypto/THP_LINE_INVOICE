@@ -716,7 +716,7 @@ test('trigger reconciliation creates missing triggers and removes duplicates', (
 
 test('opportunistic maintenance is throttled and does not repeat work per request', () => {
   const properties = new Map();
-  const counts = { retry: 0, health: 0, triggers: 0, release: 0 };
+  const counts = { retry: 0, health: 0, release: 0 };
   const context = vm.createContext({
     console, Date, JSON, Math, Object, String, Number, Error,
     Logger: { log() {} },
@@ -745,21 +745,19 @@ test('opportunistic maintenance is throttled and does not repeat work per reques
   );
   context.retryPendingNotifications_ = function() { counts.retry += 1; };
   context.dailySystemHealthCheck = function() { counts.health += 1; };
-  context.reconcileReliabilityTriggers_ = function() { counts.triggers += 1; };
-
   context.runOpportunisticMaintenance_(true);
   context.runOpportunisticMaintenance_(true);
 
-  assert.deepEqual(counts, { retry: 1, health: 1, triggers: 1, release: 6 });
+  assert.deepEqual(counts, { retry: 1, health: 1, release: 4 });
   assert.equal(properties.get('ADMIN_ALERT_EMAIL'), 'tryharddancers@gmail.com');
   assert.ok(properties.get('OPS_LAST_RETRY_FALLBACK_AT'));
   assert.ok(properties.get('OPS_LAST_HEALTH_FALLBACK_AT'));
-  assert.ok(properties.get('OPS_LAST_TRIGGER_AUDIT_AT'));
+  assert.equal(properties.has('OPS_LAST_TRIGGER_AUDIT_AT'), false);
 });
 
 test('lightweight form-load maintenance skips the daily health check', () => {
   const properties = new Map();
-  const counts = { retry: 0, health: 0, triggers: 0 };
+  const counts = { retry: 0, health: 0 };
   const context = vm.createContext({
     console, Date, JSON, Math, Object, String, Number, Error,
     Logger: { log() {} },
@@ -785,11 +783,9 @@ test('lightweight form-load maintenance skips the daily health check', () => {
   );
   context.retryPendingNotifications_ = function() { counts.retry += 1; return {}; };
   context.dailySystemHealthCheck = function() { counts.health += 1; };
-  context.reconcileReliabilityTriggers_ = function() { counts.triggers += 1; return {}; };
-
   context.runOpportunisticMaintenance_(false);
 
-  assert.deepEqual(counts, { retry: 1, health: 0, triggers: 1 });
+  assert.deepEqual(counts, { retry: 1, health: 0 });
   assert.equal(properties.has('OPS_LAST_HEALTH_FALLBACK_AT'), false);
 });
 

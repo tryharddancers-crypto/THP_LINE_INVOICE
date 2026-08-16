@@ -2,7 +2,6 @@ var ADMIN_ALERT_THROTTLE_SECONDS_ = 60 * 60;
 var DEFAULT_ADMIN_ALERT_EMAIL_ = 'tryharddancers@gmail.com';
 var RETRY_FALLBACK_INTERVAL_MS_ = 10 * 60 * 1000;
 var HEALTH_FALLBACK_INTERVAL_MS_ = 24 * 60 * 60 * 1000;
-var TRIGGER_AUDIT_INTERVAL_MS_ = 6 * 60 * 60 * 1000;
 
 function getAdminAlertEmail_() {
   const configured = String(
@@ -133,8 +132,9 @@ function claimMaintenanceWindow_(propertyKey, intervalMs) {
 }
 
 /**
- * Trigger-free fallback. Normal form traffic keeps retries, health checks and
- * trigger configuration alive even if an installable trigger is removed.
+ * Trigger-free fallback. Normal form traffic keeps retries and health checks
+ * alive even when no installable trigger is configured. Trigger management is
+ * intentionally excluded because web-app requests cannot authorize ScriptApp.
  */
 function runOpportunisticMaintenance_(includeHealthCheck) {
   try {
@@ -158,14 +158,6 @@ function runOpportunisticMaintenance_(includeHealthCheck) {
       }
     }
 
-    if (claimMaintenanceWindow_('OPS_LAST_TRIGGER_AUDIT_AT', TRIGGER_AUDIT_INTERVAL_MS_)) {
-      try {
-        const triggerStatus = reconcileReliabilityTriggers_();
-        Logger.log('自動トリガー確認: ' + JSON.stringify(triggerStatus));
-      } catch (err) {
-        reportSystemError_('自動トリガー復旧', err);
-      }
-    }
   } catch (err) {
     Logger.log('予備メンテナンス処理に失敗: ' + err.message);
   }
