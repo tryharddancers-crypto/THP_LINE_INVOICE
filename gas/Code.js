@@ -9,8 +9,16 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     Logger.log('doPost error: ' + err.message);
+    if (!err.isClientError) {
+      reportSystemError_('フォーム送信処理', err);
+    }
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+      .createTextOutput(JSON.stringify({
+        ok: false,
+        error: err.isClientError
+          ? err.message
+          : 'システムでエラーが発生しました。時間を置いて再度お試しください。'
+      }))
       .setMimeType(ContentService.MimeType.JSON);
   }
 }
@@ -42,21 +50,18 @@ function doGet(e) {
  * @returns {{ ok: boolean, count: number, date: string }}
  */
 function handleSubmission(e) {
-  const body = JSON.parse(e.postData.contents);
-  const { userId, rows } = body;
-
-  if (!rows || rows.length === 0) {
-    throw new Error('rows is empty');
+  let body;
+  try {
+    body = JSON.parse(e && e.postData && e.postData.contents || '');
+  } catch (err) {
+    throw createClientError_('送信データを読み取れませんでした。フォームを開き直してください。');
   }
 
-  // Older clients can still submit, but the current frontend always supplies this ID.
-  const submissionId = normalizeSubmissionId_(body.submissionId) || Utilities.getUuid();
+  const userId = verifyLineIdToken_(body.idToken);
+  const enrichedRows = validateSubmissionRows_(body.rows);
 
-  // 単価はフロントエンドから送られてきたものをそのまま使用する
-  const enrichedRows = rows.map(row => ({
-    ...row,
-    unitPrice: row.unitPrice || 0
-  }));
+  // The current frontend supplies this ID so uncertain retries cannot duplicate rows.
+  const submissionId = normalizeSubmissionId_(body.submissionId) || Utilities.getUuid();
 
   // Monthly-file selection, row selection and write must be one locked operation.
   const writeResult = withSubmissionLock_(function() {
@@ -68,14 +73,14 @@ function handleSubmission(e) {
       };
     }
 
-    const date = parseDate(rows[0].date);
+    const date = parseDate(enrichedRows[0].date);
     const ss = getOrCreateMonthlySpreadsheet(date);
     const appendResult = appendRowsToInputSheet(ss, enrichedRows);
     SpreadsheetApp.flush();
 
     const response = {
       ok: true,
-      count: rows.length,
+      count: enrichedRows.length,
       date: enrichedRows[0].date,
       submissionId: submissionId,
       duplicate: false
@@ -100,7 +105,7 @@ function handleSubmission(e) {
 
   // 入力されたC〜N列の内容を、該当担当者のメールアドレスへ通知する
   try {
-    sendInputRowsNotification_(ss, writeResult.rowNumbers);
+    sendInputRowsNotification_(ss, writeResult.rowNumbers, submissionId);
   } catch (err) {
     Logger.log('入力内容メール通知中にエラー: ' + err.message);
   }

@@ -456,8 +456,11 @@
       msg.textContent = '送信中...';
       msg.className = '';
       try {
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error('LINE認証を確認できません。フォームを開き直してください');
         const payload = {
           submissionId: pendingSubmissionId,
+          idToken,
           userId: liffProfile ? liffProfile.userId : null,
           rows: pendingRows
         };

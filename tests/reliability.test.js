@@ -98,6 +98,15 @@ function createBackendHarness(options = {}) {
     sendLineMessage() {
       counts.line += 1;
       if (options.lineFails) throw new Error('line failed');
+    },
+    verifyLineIdToken_(token) {
+      if (token === 'invalid') throw new Error('invalid token');
+      return 'verified-line-user';
+    },
+    validateSubmissionRows_(rows) {
+      return rows;
+    },
+    reportSystemError_() {
     }
   });
 
@@ -112,6 +121,7 @@ function createBackendHarness(options = {}) {
   function submit(submissionId, overrides = {}) {
     const body = {
       submissionId,
+      idToken: 'valid-token',
       userId: 'line-user',
       rows: [{
         date: '2026/08/16',
@@ -180,6 +190,15 @@ test('an invalid submission ID is rejected before writing', () => {
   assert.throws(
     () => harness.submit('invalid id'),
     /submissionId is invalid/
+  );
+  assert.equal(harness.counts.append, 0);
+});
+
+test('an invalid LINE identity is rejected before writing', () => {
+  const harness = createBackendHarness();
+  assert.throws(
+    () => harness.submit('submission-auth-failure', { idToken: 'invalid' }),
+    /invalid token/
   );
   assert.equal(harness.counts.append, 0);
 });
@@ -303,3 +322,227 @@ for (const relativePath of ['gas/liff/index.html', 'liff-frontend/index.html']) 
     verifyFrontendLifecycle(relativePath);
   });
 }
+
+function createValidationHarness(options = {}) {
+  const fetchCalls = [];
+  const context = vm.createContext({
+    Date,
+    JSON,
+    Number,
+    String,
+    Object,
+    Array,
+    RegExp,
+    Error,
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) {
+            if (key === 'LIFF_ID') return '2009725727-3jvV9g52';
+            return null;
+          }
+        };
+      }
+    },
+    UrlFetchApp: {
+      fetch(url, request) {
+        fetchCalls.push({ url, request });
+        return {
+          getResponseCode() { return options.verifyCode || 200; },
+          getContentText() {
+            return JSON.stringify(options.verifyResponse || {
+              sub: 'Uverified', aud: '2009725727', exp: Math.floor(Date.now() / 1000) + 300
+            });
+          }
+        };
+      }
+    },
+    getMasterData() {
+      return {
+        jobList: [
+          { name: 'OWL TIP', billing: 'OWL', unitPrice: 50 },
+          { name: 'WINX CA', billing: 'OWL', unitPrice: 1000 },
+          { name: 'WINX CA', billing: 'KTN', unitPrice: 1000 }
+        ],
+        dancerNames: ['TEST USER']
+      };
+    },
+    parseDateParts_(value) {
+      const match = String(value || '').match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+      if (!match) throw new Error('invalid date');
+      return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+    }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/SecurityValidation.js'), 'utf8'),
+    context,
+    { filename: 'gas/SecurityValidation.js' }
+  );
+  return { context, fetchCalls };
+}
+
+test('LINE ID token is verified against the configured LIFF channel', () => {
+  const harness = createValidationHarness();
+  assert.equal(harness.context.verifyLineIdToken_('token-value'), 'Uverified');
+  assert.equal(harness.fetchCalls.length, 1);
+  assert.equal(harness.fetchCalls[0].request.payload.client_id, '2009725727');
+  assert.equal(harness.fetchCalls[0].request.payload.id_token, 'token-value');
+});
+
+test('invalid LINE ID token is rejected', () => {
+  const harness = createValidationHarness({ verifyCode: 400, verifyResponse: { error: 'invalid' } });
+  assert.throws(() => harness.context.verifyLineIdToken_('bad-token'), /LINEの認証期限/);
+});
+
+test('server validation replaces client prices with master prices', () => {
+  const harness = createValidationHarness();
+  const rows = harness.context.validateSubmissionRows_([{
+    date: '2026/08/16', name: 'TEST USER', jobName: 'OWL TIP', qty: 2, detail: '', unitPrice: 999999
+  }]);
+  assert.equal(rows[0].unitPrice, 50);
+  assert.equal(rows[0].date, '2026/08/16');
+});
+
+test('server validation rejects mixed-month submissions', () => {
+  const harness = createValidationHarness();
+  assert.throws(() => harness.context.validateSubmissionRows_([
+    { date: '2026/08/31', name: 'TEST USER', jobName: 'OWL TIP', qty: 1 },
+    { date: '2026/09/01', name: 'TEST USER', jobName: 'OWL TIP', qty: 1 }
+  ]), /異なる月/);
+});
+
+test('server validation rejects unknown people, jobs and invalid quantities', () => {
+  const harness = createValidationHarness();
+  assert.throws(() => harness.context.validateSubmissionRows_([
+    { date: '2026/08/16', name: 'UNKNOWN', jobName: 'OWL TIP', qty: 1 }
+  ]), /担当者/);
+  assert.throws(() => harness.context.validateSubmissionRows_([
+    { date: '2026/08/16', name: 'TEST USER', jobName: 'UNKNOWN', qty: 1 }
+  ]), /商品/);
+  assert.throws(() => harness.context.validateSubmissionRows_([
+    { date: '2026/08/16', name: 'TEST USER', jobName: 'OWL TIP', qty: 0 }
+  ]), /数量/);
+  assert.throws(() => harness.context.validateSubmissionRows_([
+    { date: '', name: 'TEST USER', jobName: 'OWL TIP', qty: 1 }
+  ]), /日程/);
+});
+
+test('all frontend copies send a LINE ID token', () => {
+  for (const relativePath of ['gas/liff/index.html', 'liff-frontend/index.html']) {
+    const source = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+    assert.match(source, /liff\.getIDToken\(\)/);
+    assert.match(source, /idToken,/);
+  }
+});
+
+test('formula capacity protection extends rows and restores calculated columns', () => {
+  let maxRows = 10;
+  const formulas = new Map();
+  const required = { 2: '=ROW()', 5: '=RC[2]', 6: '=RC[1]', 13: '=RC[-1]', 14: '=RC[-2]*RC[-1]' };
+  Object.entries(required).forEach(([column, formula]) => formulas.set(`8:${column}`, formula));
+  let copied = false;
+  const sheet = {
+    getMaxRows() { return maxRows; },
+    insertRowsAfter(_after, count) { maxRows += count; },
+    getRange(row, column, rowCount = 1, columnCount = 1) {
+      return {
+        getFormulasR1C1() {
+          return Array.from({ length: rowCount }, (_, r) =>
+            Array.from({ length: columnCount }, (_, c) => formulas.get(`${row + r}:${column + c}`) || '')
+          );
+        },
+        copyTo() { copied = true; },
+        setFormulaR1C1(formula) {
+          formulas.set(`${row}:${column}`, formula);
+          return this;
+        }
+      };
+    }
+  };
+  const context = vm.createContext({
+    console,
+    Date,
+    JSON,
+    Math,
+    Object,
+    String,
+    Number,
+    Error,
+    SpreadsheetApp: { CopyPasteType: { PASTE_FORMAT: 'PASTE_FORMAT' } }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/MonthlySheet.js'), 'utf8'),
+    context,
+    { filename: 'gas/MonthlySheet.js' }
+  );
+  context.ensureInputSheetCapacity_(sheet, 11, 12);
+  assert.equal(maxRows, 32);
+  assert.equal(copied, true);
+  for (const column of [2, 5, 6, 13, 14]) {
+    assert.ok(formulas.get(`11:${column}`));
+    assert.ok(formulas.get(`12:${column}`));
+  }
+});
+
+test('notification retry and health-check safeguards are present', () => {
+  const queueSource = fs.readFileSync(path.join(ROOT, 'gas/NotificationQueue.js'), 'utf8');
+  const healthSource = fs.readFileSync(path.join(ROOT, 'gas/HealthCheck.js'), 'utf8');
+  assert.match(queueSource, /function retryPendingNotifications\(/);
+  assert.match(queueSource, /NOTIFICATION_MAX_ATTEMPTS_/);
+  assert.match(healthSource, /function runSystemHealthCheck_\(/);
+});
+
+test('a failed recipient is queued without resending successful recipients', () => {
+  const queued = [];
+  const sentTo = [];
+  const context = vm.createContext({
+    console,
+    Date,
+    JSON,
+    Math,
+    Object,
+    String,
+    Number,
+    Error,
+    Logger: { log() {} },
+    GmailApp: {
+      sendEmail(email) {
+        sentTo.push(email);
+        if (email === 'fail@example.com') throw new Error('mail unavailable');
+      }
+    },
+    getOutsourceContactEmailMap_() {
+      return { OK: 'ok@example.com', FAIL: 'fail@example.com' };
+    },
+    enqueueNotificationRetry_(submissionId, spreadsheetId, personName, rowNumbers) {
+      queued.push({ submissionId, spreadsheetId, personName, rowNumbers });
+    },
+    reportSystemError_() {},
+    Utilities: { formatDate() { return '2026/08/16'; } }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/MonthlySheet.js'), 'utf8'),
+    context,
+    { filename: 'gas/MonthlySheet.js' }
+  );
+  context.readInsertedInputRows_ = function() {
+    const base = {
+      date: '2026/08/16', weekday: '日', venue: 'TEST', category: 'TIP',
+      jobName: 'TEST TIP', detail: '', qty: 1, unitPrice: 1, total: 1
+    };
+    return [
+      { ...base, name: 'OK' },
+      { ...base, name: 'FAIL' }
+    ];
+  };
+  const result = context.sendInputRowsNotification_(
+    { getId() { return 'monthly-id'; } },
+    [8, 9],
+    'submission-mail-test'
+  );
+  assert.deepEqual([...result.sent], ['OK']);
+  assert.deepEqual([...result.queued], ['FAIL']);
+  assert.deepEqual(sentTo, ['ok@example.com', 'fail@example.com']);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].personName, 'FAIL');
+});

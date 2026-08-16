@@ -83,6 +83,42 @@ function findNextInputRow_(sheet) {
   return firstDataRow;
 }
 
+function findInputFormulaTemplate_(sheet) {
+  const firstDataRow = 8;
+  const requiredOffsets = [0, 3, 4, 11, 12]; // B, E, F, M, N within B:N
+  const rowCount = Math.max(sheet.getMaxRows() - firstDataRow + 1, 1);
+  const formulas = sheet.getRange(firstDataRow, 2, rowCount, 13).getFormulasR1C1();
+  for (let i = 0; i < formulas.length; i++) {
+    if (requiredOffsets.every(function(offset) { return formulas[i][offset] !== ''; })) {
+      return { rowNumber: firstDataRow + i, formulas: formulas[i] };
+    }
+  }
+  throw new Error('「2.入力表」の自動計算式（B/E/F/M/N列）が見つかりません');
+}
+
+/** Ensure new rows retain the template formulas and formatting. */
+function ensureInputSheetCapacity_(sheet, startRow, endRow) {
+  const formulaTemplate = findInputFormulaTemplate_(sheet);
+  if (endRow > sheet.getMaxRows()) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), endRow - sheet.getMaxRows() + 20);
+  }
+
+  const rowCount = endRow - startRow + 1;
+  sheet.getRange(formulaTemplate.rowNumber, 2, 1, 13).copyTo(
+    sheet.getRange(startRow, 2, rowCount, 13),
+    SpreadsheetApp.CopyPasteType.PASTE_FORMAT,
+    false
+  );
+
+  const formulaColumns = [2, 5, 6, 13, 14];
+  const formulaOffsets = [0, 3, 4, 11, 12];
+  for (let row = startRow; row <= endRow; row++) {
+    formulaColumns.forEach(function(column, index) {
+      sheet.getRange(row, column).setFormulaR1C1(formulaTemplate.formulas[formulaOffsets[index]]);
+    });
+  }
+}
+
 function appendRowsToInputSheet(ss, rows) {
   const sheet = ss.getSheetByName('2.入力表');
   if (!sheet) {
@@ -91,6 +127,8 @@ function appendRowsToInputSheet(ss, rows) {
 
   // Do not reuse a populated row merely because its date cell is blank.
   var startRow = findNextInputRow_(sheet);
+  var endRow = startRow + rows.length - 1;
+  ensureInputSheetCapacity_(sheet, startRow, endRow);
 
   rows.forEach(function(row, i) {
     var r       = startRow + i;
@@ -123,7 +161,7 @@ function appendRowsToInputSheet(ss, rows) {
 
   return {
     startRow: startRow,
-    endRow: startRow + rows.length - 1,
+    endRow: endRow,
     rowNumbers: rows.map(function(_, i) { return startRow + i; })
   };
 }
@@ -211,11 +249,11 @@ function readInsertedInputRows_(ss, rowNumbers) {
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss 対象の月次スプレッドシート
  * @param {number[]} rowNumbers 追記した行番号
  */
-function sendInputRowsNotification_(ss, rowNumbers) {
+function sendInputRowsNotification_(ss, rowNumbers, submissionId) {
   const insertedRows = readInsertedInputRows_(ss, rowNumbers);
   if (insertedRows.length === 0) {
     Logger.log('入力内容メール通知: 通知対象行がありません');
-    return;
+    return { sent: [], queued: [] };
   }
 
   const emailMap = getDancerEmailMap_();
@@ -225,23 +263,36 @@ function sendInputRowsNotification_(ss, rowNumbers) {
     grouped[row.name].push(row);
   });
 
+  const result = { sent: [], queued: [] };
   Object.keys(grouped).forEach(function(name) {
-    const email = emailMap[name];
-    if (!email) {
-      Logger.log('入力内容メール通知スキップ: ' + name + ' のメールアドレスが外注連絡票U列にありません');
-      return;
-    }
-
     const rows = grouped[name];
-    const subject = '【確認】案件入力内容を受け付けました';
-    const body = buildInputRowsNotificationBody_(ss, name, rows);
     try {
-      GmailApp.sendEmail(email, subject, body, { name: '管理事務局' });
-      Logger.log('入力内容メール通知送信: ' + name + ' <' + email + '> ' + rows.length + '件');
-    } catch (e) {
-      Logger.log('入力内容メール通知失敗: ' + name + ' / ' + e.message);
+      sendNotificationForPerson_(ss, name, rows, emailMap);
+      result.sent.push(name);
+    } catch (err) {
+      Logger.log('入力内容メール通知失敗・再送待ちへ登録: ' + name + ' / ' + err.message);
+      try {
+        enqueueNotificationRetry_(submissionId, ss.getId(), name, rowNumbers, err);
+        result.queued.push(name);
+      } catch (queueErr) {
+        reportSystemError_('メール通知の再送登録: ' + name, queueErr);
+      }
     }
   });
+  return result;
+}
+
+function sendNotificationForPerson_(ss, name, rows, emailMap) {
+  const map = emailMap || getDancerEmailMap_();
+  const email = map[name];
+  if (!email) {
+    throw new Error(name + ' のメールアドレスが外注連絡票U列にありません');
+  }
+
+  const subject = '【確認】案件入力内容を受け付けました';
+  const body = buildInputRowsNotificationBody_(ss, name, rows);
+  GmailApp.sendEmail(email, subject, body, { name: '管理事務局' });
+  Logger.log('入力内容メール通知送信: ' + name + ' <' + email + '> ' + rows.length + '件');
 }
 
 /**
