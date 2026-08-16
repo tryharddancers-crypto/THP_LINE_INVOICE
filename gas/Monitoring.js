@@ -1,4 +1,8 @@
 var ADMIN_ALERT_THROTTLE_SECONDS_ = 60 * 60;
+var DEFAULT_ADMIN_ALERT_EMAIL_ = 'tryharddancers@gmail.com';
+var RETRY_FALLBACK_INTERVAL_MS_ = 10 * 60 * 1000;
+var HEALTH_FALLBACK_INTERVAL_MS_ = 24 * 60 * 60 * 1000;
+var TRIGGER_AUDIT_INTERVAL_MS_ = 6 * 60 * 60 * 1000;
 
 function getAdminAlertEmail_() {
   const configured = String(
@@ -6,10 +10,21 @@ function getAdminAlertEmail_() {
   ).trim();
   if (configured) return configured;
   try {
-    return String(Session.getEffectiveUser().getEmail() || '').trim();
+    const effectiveUser = String(Session.getEffectiveUser().getEmail() || '').trim();
+    return effectiveUser || DEFAULT_ADMIN_ALERT_EMAIL_;
   } catch (err) {
-    return '';
+    return DEFAULT_ADMIN_ALERT_EMAIL_;
   }
+}
+
+function ensureAdminAlertEmail_() {
+  const props = PropertiesService.getScriptProperties();
+  const configured = String(props.getProperty('ADMIN_ALERT_EMAIL') || '').trim();
+  if (configured) return configured;
+
+  const email = getAdminAlertEmail_();
+  if (email) props.setProperty('ADMIN_ALERT_EMAIL', email);
+  return email;
 }
 
 /** Send a throttled operational alert without masking the original failure. */
@@ -53,14 +68,96 @@ function dailySystemHealthCheck() {
 }
 
 function setupReliabilityTriggers() {
-  const handlers = ScriptApp.getProjectTriggers().map(function(trigger) {
-    return trigger.getHandlerFunction();
+  ensureAdminAlertEmail_();
+  const status = reconcileReliabilityTriggers_();
+  Logger.log('信頼性向上トリガーの設定が完了しました: ' + JSON.stringify(status));
+  return status;
+}
+
+function reconcileReliabilityTriggers_() {
+  const required = {
+    retryPendingNotifications: function() {
+      return ScriptApp.newTrigger('retryPendingNotifications').timeBased().everyMinutes(10).create();
+    },
+    dailySystemHealthCheck: function() {
+      return ScriptApp.newTrigger('dailySystemHealthCheck').timeBased().everyDays(1).atHour(6).create();
+    }
+  };
+  const found = {};
+
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    const handler = trigger.getHandlerFunction();
+    if (!required[handler]) return;
+    if (!found[handler]) {
+      found[handler] = trigger;
+      return;
+    }
+    ScriptApp.deleteTrigger(trigger);
   });
-  if (handlers.indexOf('retryPendingNotifications') === -1) {
+
+  if (!found.retryPendingNotifications) {
     ScriptApp.newTrigger('retryPendingNotifications').timeBased().everyMinutes(10).create();
   }
-  if (handlers.indexOf('dailySystemHealthCheck') === -1) {
+  if (!found.dailySystemHealthCheck) {
     ScriptApp.newTrigger('dailySystemHealthCheck').timeBased().everyDays(1).atHour(6).create();
   }
-  Logger.log('信頼性向上トリガーの設定が完了しました');
+
+  return {
+    retryPendingNotifications: true,
+    dailySystemHealthCheck: true,
+    adminAlertEmail: ensureAdminAlertEmail_()
+  };
+}
+
+function claimMaintenanceWindow_(propertyKey, intervalMs) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return false;
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const now = Date.now();
+    const lastRun = Number(props.getProperty(propertyKey)) || 0;
+    if (now - lastRun < intervalMs) return false;
+    props.setProperty(propertyKey, String(now));
+    return true;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Trigger-free fallback. Normal form traffic keeps retries, health checks and
+ * trigger configuration alive even if an installable trigger is removed.
+ */
+function runOpportunisticMaintenance_() {
+  try {
+    ensureAdminAlertEmail_();
+
+    if (claimMaintenanceWindow_('OPS_LAST_RETRY_FALLBACK_AT', RETRY_FALLBACK_INTERVAL_MS_)) {
+      try {
+        const retryResult = retryPendingNotifications_(3);
+        Logger.log('メール再送の予備処理: ' + JSON.stringify(retryResult));
+      } catch (err) {
+        reportSystemError_('メール再送の予備処理', err);
+      }
+    }
+
+    if (claimMaintenanceWindow_('OPS_LAST_HEALTH_FALLBACK_AT', HEALTH_FALLBACK_INTERVAL_MS_)) {
+      try {
+        dailySystemHealthCheck();
+      } catch (err) {
+        reportSystemError_('日次点検の予備処理', err);
+      }
+    }
+
+    if (claimMaintenanceWindow_('OPS_LAST_TRIGGER_AUDIT_AT', TRIGGER_AUDIT_INTERVAL_MS_)) {
+      try {
+        const triggerStatus = reconcileReliabilityTriggers_();
+        Logger.log('自動トリガー確認: ' + JSON.stringify(triggerStatus));
+      } catch (err) {
+        reportSystemError_('自動トリガー復旧', err);
+      }
+    }
+  } catch (err) {
+    Logger.log('予備メンテナンス処理に失敗: ' + err.message);
+  }
 }

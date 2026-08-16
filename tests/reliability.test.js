@@ -107,6 +107,8 @@ function createBackendHarness(options = {}) {
       return rows;
     },
     reportSystemError_() {
+    },
+    runOpportunisticMaintenance_() {
     }
   });
 
@@ -605,9 +607,106 @@ test('appended rows pin store, category and price from validated master data', (
 test('notification retry and health-check safeguards are present', () => {
   const queueSource = fs.readFileSync(path.join(ROOT, 'gas/NotificationQueue.js'), 'utf8');
   const healthSource = fs.readFileSync(path.join(ROOT, 'gas/HealthCheck.js'), 'utf8');
+  const monitoringSource = fs.readFileSync(path.join(ROOT, 'gas/Monitoring.js'), 'utf8');
+  const codeSource = fs.readFileSync(path.join(ROOT, 'gas/Code.js'), 'utf8');
   assert.match(queueSource, /function retryPendingNotifications\(/);
   assert.match(queueSource, /NOTIFICATION_MAX_ATTEMPTS_/);
   assert.match(healthSource, /function runSystemHealthCheck_\(/);
+  assert.match(monitoringSource, /function runOpportunisticMaintenance_\(/);
+  assert.match(monitoringSource, /function reconcileReliabilityTriggers_\(/);
+  assert.match(monitoringSource, /DEFAULT_ADMIN_ALERT_EMAIL_ = 'tryharddancers@gmail.com'/);
+  assert.match(codeSource, /runOpportunisticMaintenance_\(\)/);
+});
+
+test('trigger reconciliation creates missing triggers and removes duplicates', () => {
+  const created = [];
+  const deleted = [];
+  const properties = new Map();
+  const existing = [
+    { getHandlerFunction() { return 'retryPendingNotifications'; } },
+    { getHandlerFunction() { return 'retryPendingNotifications'; } }
+  ];
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    Logger: { log() {} },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) { return properties.get(key) || null; },
+          setProperty(key, value) { properties.set(key, value); }
+        };
+      }
+    },
+    Session: { getEffectiveUser() { return { getEmail() { return ''; } }; } },
+    ScriptApp: {
+      getProjectTriggers() { return existing; },
+      deleteTrigger(trigger) { deleted.push(trigger); },
+      newTrigger(handler) {
+        return {
+          timeBased() { return this; },
+          everyMinutes() { return this; },
+          everyDays() { return this; },
+          atHour() { return this; },
+          create() { created.push(handler); return {}; }
+        };
+      }
+    }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/Monitoring.js'), 'utf8'),
+    context,
+    { filename: 'gas/Monitoring.js' }
+  );
+
+  const status = context.setupReliabilityTriggers();
+  assert.deepEqual(created, ['dailySystemHealthCheck']);
+  assert.equal(deleted.length, 1);
+  assert.equal(properties.get('ADMIN_ALERT_EMAIL'), 'tryharddancers@gmail.com');
+  assert.equal(status.retryPendingNotifications, true);
+  assert.equal(status.dailySystemHealthCheck, true);
+});
+
+test('opportunistic maintenance is throttled and does not repeat work per request', () => {
+  const properties = new Map();
+  const counts = { retry: 0, health: 0, triggers: 0, release: 0 };
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    Logger: { log() {} },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) { return properties.get(key) || null; },
+          setProperty(key, value) { properties.set(key, value); }
+        };
+      }
+    },
+    Session: { getEffectiveUser() { return { getEmail() { return ''; } }; } },
+    LockService: {
+      getScriptLock() {
+        return {
+          tryLock() { return true; },
+          releaseLock() { counts.release += 1; }
+        };
+      }
+    }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/Monitoring.js'), 'utf8'),
+    context,
+    { filename: 'gas/Monitoring.js' }
+  );
+  context.retryPendingNotifications_ = function() { counts.retry += 1; };
+  context.dailySystemHealthCheck = function() { counts.health += 1; };
+  context.reconcileReliabilityTriggers_ = function() { counts.triggers += 1; };
+
+  context.runOpportunisticMaintenance_();
+  context.runOpportunisticMaintenance_();
+
+  assert.deepEqual(counts, { retry: 1, health: 1, triggers: 1, release: 6 });
+  assert.equal(properties.get('ADMIN_ALERT_EMAIL'), 'tryharddancers@gmail.com');
+  assert.ok(properties.get('OPS_LAST_RETRY_FALLBACK_AT'));
+  assert.ok(properties.get('OPS_LAST_HEALTH_FALLBACK_AT'));
+  assert.ok(properties.get('OPS_LAST_TRIGGER_AUDIT_AT'));
 });
 
 test('a failed recipient is queued without resending successful recipients', () => {
