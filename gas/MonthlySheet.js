@@ -298,6 +298,8 @@ function formatMailValue_(value) {
 function createMonthlySheetTrigger() {
   const now = new Date();
   Logger.log(`月次シート作成開始: ${getMonthlyFileName(now)}`);
-  const ss = getOrCreateMonthlySpreadsheet(now);
+  const ss = withSubmissionLock_(function() {
+    return getOrCreateMonthlySpreadsheet(now);
+  });
   Logger.log(`月次シート作成完了: ${ss.getUrl()}`);
 }

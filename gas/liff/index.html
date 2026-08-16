@@ -97,8 +97,16 @@
     let personCount = 0;
     const jobCountMap = {};
     let pendingRows = [];
+    let pendingSubmissionId = null;
     let jobTree = {};
     let priceMap = {}; // 案件名 → 単価
+
+    function createSubmissionId() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+      return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
 
     async function init() {
       try {
@@ -300,6 +308,7 @@
       const errEl = document.getElementById('form-message');
       try {
         pendingRows = collectRows();
+        pendingSubmissionId = createSubmissionId();
         errEl.textContent = '';
       } catch (e) {
         errEl.textContent = '❌ ' + e.message;
@@ -353,6 +362,7 @@
     }
 
     function backToForm() {
+      pendingSubmissionId = null;
       document.getElementById('confirm-view').style.display = 'none';
       document.getElementById('form-view').style.display = 'block';
     }
@@ -364,7 +374,11 @@
       msg.textContent = '送信中...';
       msg.className = '';
       try {
-        const payload = { userId: liffProfile ? liffProfile.userId : null, rows: pendingRows };
+        const payload = {
+          submissionId: pendingSubmissionId,
+          userId: liffProfile ? liffProfile.userId : null,
+          rows: pendingRows
+        };
         const res = await fetch(GAS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
@@ -380,6 +394,7 @@
           personCount = 0;
           Object.keys(jobCountMap).forEach(k => delete jobCountMap[k]);
           pendingRows = [];
+          pendingSubmissionId = null;
           document.getElementById('form-message').textContent = '';
           addPerson();
         }, 2000);

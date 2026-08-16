@@ -49,24 +49,58 @@ function handleSubmission(e) {
     throw new Error('rows is empty');
   }
 
+  // Older clients can still submit, but the current frontend always supplies this ID.
+  const submissionId = normalizeSubmissionId_(body.submissionId) || Utilities.getUuid();
+
   // 単価はフロントエンドから送られてきたものをそのまま使用する
   const enrichedRows = rows.map(row => ({
     ...row,
     unitPrice: row.unitPrice || 0
   }));
 
-  // 当月スプレッドシートに追記
-  const date = parseDate(rows[0].date);
-  const ss = getOrCreateMonthlySpreadsheet(date);
-  const appendResult = appendRowsToInputSheet(ss, enrichedRows);
+  // Monthly-file selection, row selection and write must be one locked operation.
+  const writeResult = withSubmissionLock_(function() {
+    const savedResult = getSavedSubmissionResult_(submissionId);
+    if (savedResult) {
+      return {
+        duplicate: true,
+        response: Object.assign({}, savedResult, { duplicate: true })
+      };
+    }
 
-  // ▼ 書き込んだデータを確実にスプレッドシートに反映させる
-  SpreadsheetApp.flush();
+    const date = parseDate(rows[0].date);
+    const ss = getOrCreateMonthlySpreadsheet(date);
+    const appendResult = appendRowsToInputSheet(ss, enrichedRows);
+    SpreadsheetApp.flush();
+
+    const response = {
+      ok: true,
+      count: rows.length,
+      date: enrichedRows[0].date,
+      submissionId: submissionId,
+      duplicate: false
+    };
+    saveSubmissionResult_(submissionId, response);
+
+    return {
+      duplicate: false,
+      response: response,
+      spreadsheetId: ss.getId(),
+      rowNumbers: appendResult.rowNumbers
+    };
+  });
+
+  if (writeResult.duplicate) {
+    Logger.log('重複送信をスキップ: ' + submissionId);
+    return writeResult.response;
+  }
+
+  const ss = SpreadsheetApp.openById(writeResult.spreadsheetId);
   Utilities.sleep(1000);
 
   // 入力されたC〜N列の内容を、該当担当者のメールアドレスへ通知する
   try {
-    sendInputRowsNotification_(ss, appendResult.rowNumbers);
+    sendInputRowsNotification_(ss, writeResult.rowNumbers);
   } catch (err) {
     Logger.log('入力内容メール通知中にエラー: ' + err.message);
   }
@@ -76,21 +110,15 @@ function handleSubmission(e) {
   const liffUrl = 'https://liff.line.me/' + liffId;
   const message = buildSubmissionMessage(enrichedRows, liffUrl);
   if (userId) {
-    sendLineMessage(userId, message);
+    try {
+      sendLineMessage(userId, message);
+    } catch (err) {
+      Logger.log('LINE通知中にエラー: ' + err.message);
+    }
   }
 
-  // フォーム送信直後に、入力された人物ごとの明細PDF（その日の分）を生成してメール送信する
-  try {
-    const targetDateStr = enrichedRows[0].date; // フォームから送信された日付(例: "2026/05/25")
-    const uniqueNames = [...new Set(enrichedRows.map(row => row.name).filter(Boolean))];
-    uniqueNames.forEach(name => {
-      sendPdfForPerson(ss, name, targetDateStr);
-    });
-  } catch (err) {
-    console.error('PDF自動送信中にエラー: ' + err.message);
-  }
-
-  return { ok: true, count: rows.length, date: enrichedRows[0].date };
+  // PDF送信は手動メニューからのみ行う。フォーム送信では添付しない。
+  return writeResult.response;
 }
 
 /**

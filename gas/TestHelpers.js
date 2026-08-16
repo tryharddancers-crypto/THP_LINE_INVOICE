@@ -62,6 +62,28 @@ function testInputRowOccupancy() {
   Logger.log('testInputRowOccupancy: PASSED');
 }
 
+function testSubmissionIdNormalization() {
+  const valid = 'submission:20260816_test-123';
+  if (normalizeSubmissionId_(valid) !== valid) {
+    throw new Error('valid submission ID was changed');
+  }
+  if (normalizeSubmissionId_('') !== '') {
+    throw new Error('empty submission ID must stay empty');
+  }
+
+  let rejected = false;
+  try {
+    normalizeSubmissionId_('invalid id with spaces');
+  } catch (err) {
+    rejected = true;
+  }
+  if (!rejected) {
+    throw new Error('invalid submission ID must be rejected');
+  }
+
+  Logger.log('testSubmissionIdNormalization: PASSED');
+}
+
 function testLookupUnitPrice() {
   // MASTER_SPREADSHEET_IDが設定済みの状態でテスト
   const price = lookupUnitPrice('OWL TIP');
@@ -156,6 +178,7 @@ function runAllTests() {
   testGetMonthlyFileName();
   testDateOnlyHandling();
   testInputRowOccupancy();
+  testSubmissionIdNormalization();
   Logger.log('=== Utils tests PASSED ===');
   // 以下はスプレッドシートIDが設定済みの場合のみ実行
   // testLookupUnitPrice();
