@@ -654,7 +654,52 @@ test('notification retry and health-check safeguards are present', () => {
   assert.match(monitoringSource, /function runOpportunisticMaintenance_\(/);
   assert.match(monitoringSource, /function reconcileReliabilityTriggers_\(/);
   assert.match(monitoringSource, /DEFAULT_ADMIN_ALERT_EMAIL_ = 'tryharddancers@gmail.com'/);
+  assert.match(monitoringSource, /DEFAULT_ADMIN_ALERT_CC_ = 'h\.fujimoto@vexum-ai\.com'/);
   assert.match(codeSource, /runOpportunisticMaintenance_\((?:true|false)\)/);
+});
+
+test('system alerts are copied to the VEXUM support address', () => {
+  const sent = [];
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    Logger: { log() {} },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) {
+            if (key === 'ADMIN_ALERT_EMAIL') return 'tryharddancers@gmail.com';
+            return null;
+          }
+        };
+      }
+    },
+    Session: { getEffectiveUser() { return { getEmail() { return ''; } }; } },
+    Utilities: {
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      computeDigest() { return [1, 2, 3, 4]; }
+    },
+    CacheService: {
+      getScriptCache() {
+        return { get() { return null; }, put() {} };
+      }
+    },
+    GmailApp: {
+      sendEmail(to, subject, body, options) {
+        sent.push({ to, subject, body, options });
+      }
+    }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/Monitoring.js'), 'utf8'),
+    context,
+    { filename: 'gas/Monitoring.js' }
+  );
+
+  context.reportSystemError_('test context', new Error('test failure'));
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, 'tryharddancers@gmail.com');
+  assert.equal(sent[0].options.cc, 'h.fujimoto@vexum-ai.com');
 });
 
 test('trigger reconciliation creates missing triggers and removes duplicates', () => {

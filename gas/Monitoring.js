@@ -1,5 +1,6 @@
 var ADMIN_ALERT_THROTTLE_SECONDS_ = 60 * 60;
 var DEFAULT_ADMIN_ALERT_EMAIL_ = 'tryharddancers@gmail.com';
+var DEFAULT_ADMIN_ALERT_CC_ = 'h.fujimoto@vexum-ai.com';
 var RETRY_FALLBACK_INTERVAL_MS_ = 10 * 60 * 1000;
 var HEALTH_FALLBACK_INTERVAL_MS_ = 24 * 60 * 60 * 1000;
 
@@ -26,6 +27,13 @@ function ensureAdminAlertEmail_() {
   return email;
 }
 
+function getAdminAlertCc_() {
+  return String(
+    PropertiesService.getScriptProperties().getProperty('ADMIN_ALERT_CC')
+      || DEFAULT_ADMIN_ALERT_CC_
+  ).trim();
+}
+
 /** Send a throttled operational alert without masking the original failure. */
 function reportSystemError_(context, err) {
   try {
@@ -45,11 +53,15 @@ function reportSystemError_(context, err) {
     cache.put(cacheKey, '1', ADMIN_ALERT_THROTTLE_SECONDS_);
 
     const stack = err && err.stack ? '\n\n' + err.stack : '';
+    const options = { name: '請求書自動作成システム' };
+    const cc = getAdminAlertCc_();
+    if (cc && cc.toLowerCase() !== email.toLowerCase()) options.cc = cc;
+
     GmailApp.sendEmail(
       email,
       '【要確認】請求書自動作成システムでエラーが発生しました',
       '発生箇所: ' + context + '\n内容: ' + String(err && err.message || err) + stack,
-      { name: '請求書自動作成システム' }
+      options
     );
   } catch (alertErr) {
     Logger.log('管理者エラー通知に失敗: ' + alertErr.message);
