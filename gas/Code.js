@@ -31,11 +31,22 @@ function doGet(e) {
   const action = e && e.parameter && e.parameter.action;
 
   if (action === 'getMaster') {
-    const data = getMasterData();
-    runOpportunisticMaintenance_(false);
-    return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, data }))
-      .setMimeType(ContentService.MimeType.JSON);
+    try {
+      const data = getMasterData();
+      runOpportunisticMaintenance_(false);
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true, data }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      Logger.log('getMaster error: ' + err.message);
+      reportSystemError_('フォーム用マスタデータ取得', err);
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          ok: false,
+          error: '入力候補を読み込めませんでした。時間をおいてフォームを開き直してください。'
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   }
 
   // LIFFフォームHTMLを配信
@@ -110,6 +121,7 @@ function handleSubmission(e) {
     sendInputRowsNotification_(ss, writeResult.rowNumbers, submissionId);
   } catch (err) {
     Logger.log('入力内容メール通知中にエラー: ' + err.message);
+    reportSystemError_('入力内容メール通知', err);
   }
 
   // LINE通知（送信内容の詳細を含む）

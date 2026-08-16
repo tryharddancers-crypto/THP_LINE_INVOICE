@@ -103,6 +103,30 @@
     let priceMap = {}; // 案件名 → 単価
     const SUBMISSION_STORAGE_KEY = 'thp.invoice.pendingSubmission';
     const SUBMISSION_STORAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+    const REQUEST_TIMEOUT_MS = 20000;
+
+    async function fetchJson(url, options = {}) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, {
+          ...options,
+          cache: 'no-store',
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error(`通信に失敗しました（HTTP ${response.status}）`);
+        }
+        return await response.json();
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          throw new Error('通信がタイムアウトしました。電波状況を確認して再度お試しください');
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
 
     function createSubmissionId() {
       if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -196,23 +220,24 @@
         await liff.init({ liffId: LIFF_ID });
         if (!liff.isLoggedIn()) { liff.login(); return; }
         try { liffProfile = await liff.getProfile(); } catch (e) {}
-        const res = await fetch(`${GAS_URL}?action=getMaster`);
-        const json = await res.json();
-        if (json.ok) {
-          masterData = json.data;
-
-          // jobTree と priceMap を構築
-          jobTree = {};
-          priceMap = {};
-          if (masterData.jobList) {
-            masterData.jobList.forEach(job => {
-              const category = job.billing || 'その他';
-              if (!jobTree[category]) jobTree[category] = [];
-              jobTree[category].push({ label: job.name, value: job.name });
-              priceMap[`${category}\u0000${job.name}`] = job.unitPrice || 0;
-            });
-          }
+        const json = await fetchJson(`${GAS_URL}?action=getMaster`);
+        if (!json.ok) {
+          throw new Error(json.error || '入力候補を読み込めませんでした');
         }
+        if (!json.data || !Array.isArray(json.data.jobList) || !Array.isArray(json.data.dancerNames)) {
+          throw new Error('入力候補の形式が正しくありません。管理者へご連絡ください');
+        }
+        masterData = json.data;
+
+        // jobTree と priceMap を構築
+        jobTree = {};
+        priceMap = {};
+        masterData.jobList.forEach(job => {
+          const category = job.billing || 'その他';
+          if (!jobTree[category]) jobTree[category] = [];
+          jobTree[category].push({ label: job.name, value: job.name });
+          priceMap[`${category}\u0000${job.name}`] = job.unitPrice || 0;
+        });
         document.getElementById('loading').style.display = 'none';
         document.getElementById('form-view').style.display = 'block';
         addPerson();
@@ -465,12 +490,11 @@
           userId: liffProfile ? liffProfile.userId : null,
           rows: pendingRows
         };
-        const res = await fetch(GAS_URL, {
+        const json = await fetchJson(GAS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(payload)
         });
-        const json = await res.json();
         if (!json.ok) throw new Error(json.error || '送信に失敗しました');
         clearPendingSubmission();
         msg.textContent = `✅ ${json.count}件を送信しました（${json.date}）`;

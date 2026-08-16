@@ -261,7 +261,6 @@ function sendInputRowsNotification_(ss, rowNumbers, submissionId) {
     return { sent: [], queued: [] };
   }
 
-  const emailMap = getDancerEmailMap_();
   const grouped = {};
   insertedRows.forEach(function(row) {
     if (!grouped[row.name]) grouped[row.name] = [];
@@ -269,6 +268,22 @@ function sendInputRowsNotification_(ss, rowNumbers, submissionId) {
   });
 
   const result = { sent: [], queued: [] };
+  let emailMap;
+  try {
+    emailMap = getDancerEmailMap_();
+  } catch (err) {
+    Object.keys(grouped).forEach(function(name) {
+      try {
+        enqueueNotificationRetry_(submissionId, ss.getId(), name, rowNumbers, err);
+        result.queued.push(name);
+      } catch (queueErr) {
+        reportSystemError_('メール宛先取得後の再送登録: ' + name, queueErr);
+      }
+    });
+    reportSystemError_('メール宛先一覧の取得', err);
+    return result;
+  }
+
   Object.keys(grouped).forEach(function(name) {
     const rows = grouped[name];
     try {

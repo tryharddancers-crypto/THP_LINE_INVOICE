@@ -237,6 +237,35 @@ test('automatic form submission has no PDF sender call', () => {
   assert.doesNotMatch(source, /sendPdfForPerson\s*\(/);
 });
 
+test('master loading failures return a safe error and alert the administrator', () => {
+  const alerts = [];
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    Logger: { log() {} },
+    ContentService: {
+      MimeType: { JSON: 'JSON' },
+      createTextOutput(text) {
+        return {
+          text,
+          setMimeType() { return this; }
+        };
+      }
+    },
+    getMasterData() { throw new Error('master unavailable'); },
+    reportSystemError_(label, err) { alerts.push({ label, message: err.message }); }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/Code.js'), 'utf8'),
+    context,
+    { filename: 'gas/Code.js' }
+  );
+
+  const response = JSON.parse(context.doGet({ parameter: { action: 'getMaster' } }).text);
+  assert.equal(response.ok, false);
+  assert.match(response.error, /入力候補を読み込めませんでした/);
+  assert.deepEqual(alerts, [{ label: 'フォーム用マスタデータ取得', message: 'master unavailable' }]);
+});
+
 function extractInlineScript(htmlPath) {
   const html = fs.readFileSync(htmlPath, 'utf8');
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
@@ -455,6 +484,16 @@ test('all frontend copies send a LINE ID token', () => {
     assert.match(source, /idToken,/);
     assert.match(source, /rows\.push\(\{ date, billing, jobName/);
     assert.doesNotMatch(source, /new Date\(\)\.toISOString\(\)\.split\('T'\)\[0\]/);
+  }
+});
+
+test('all frontend copies time out stalled requests and reject failed master responses', () => {
+  for (const relativePath of ['gas/liff/index.html', 'liff-frontend/index.html']) {
+    const source = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+    assert.match(source, /const REQUEST_TIMEOUT_MS = 20000/);
+    assert.match(source, /controller\.abort\(\)/);
+    assert.match(source, /if \(!json\.ok\)/);
+    assert.match(source, /Array\.isArray\(json\.data\.jobList\)/);
   }
 });
 
@@ -807,4 +846,40 @@ test('a failed recipient is queued without resending successful recipients', () 
   assert.deepEqual(sentTo, ['ok@example.com', 'fail@example.com']);
   assert.equal(queued.length, 1);
   assert.equal(queued[0].personName, 'FAIL');
+});
+
+test('all recipients are queued when the email address master cannot be read', () => {
+  const queued = [];
+  const alerts = [];
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    Logger: { log() {} },
+    getOutsourceContactEmailMap_() { throw new Error('contact master unavailable'); },
+    enqueueNotificationRetry_(submissionId, spreadsheetId, personName, rowNumbers) {
+      queued.push({ submissionId, spreadsheetId, personName, rowNumbers });
+    },
+    reportSystemError_(label, err) { alerts.push({ label, message: err.message }); },
+    Utilities: { formatDate() { return '2026/08/16'; } }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/MonthlySheet.js'), 'utf8'),
+    context,
+    { filename: 'gas/MonthlySheet.js' }
+  );
+  context.readInsertedInputRows_ = function() {
+    return [
+      { name: 'A' },
+      { name: 'B' }
+    ];
+  };
+
+  const result = context.sendInputRowsNotification_(
+    { getId() { return 'monthly-id'; } },
+    [8, 9],
+    'submission-contact-master-failure'
+  );
+  assert.deepEqual([...result.sent], []);
+  assert.deepEqual([...result.queued], ['A', 'B']);
+  assert.deepEqual(queued.map(item => item.personName), ['A', 'B']);
+  assert.equal(alerts.at(-1).label, 'メール宛先一覧の取得');
 });
