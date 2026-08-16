@@ -615,7 +615,7 @@ test('notification retry and health-check safeguards are present', () => {
   assert.match(monitoringSource, /function runOpportunisticMaintenance_\(/);
   assert.match(monitoringSource, /function reconcileReliabilityTriggers_\(/);
   assert.match(monitoringSource, /DEFAULT_ADMIN_ALERT_EMAIL_ = 'tryharddancers@gmail.com'/);
-  assert.match(codeSource, /runOpportunisticMaintenance_\(\)/);
+  assert.match(codeSource, /runOpportunisticMaintenance_\((?:true|false)\)/);
 });
 
 test('trigger reconciliation creates missing triggers and removes duplicates', () => {
@@ -640,14 +640,23 @@ test('trigger reconciliation creates missing triggers and removes duplicates', (
     Session: { getEffectiveUser() { return { getEmail() { return ''; } }; } },
     ScriptApp: {
       getProjectTriggers() { return existing; },
-      deleteTrigger(trigger) { deleted.push(trigger); },
+      deleteTrigger(trigger) {
+        deleted.push(trigger);
+        const index = existing.indexOf(trigger);
+        if (index >= 0) existing.splice(index, 1);
+      },
       newTrigger(handler) {
         return {
           timeBased() { return this; },
           everyMinutes() { return this; },
           everyDays() { return this; },
           atHour() { return this; },
-          create() { created.push(handler); return {}; }
+          create() {
+            created.push(handler);
+            const trigger = { getHandlerFunction() { return handler; } };
+            existing.push(trigger);
+            return trigger;
+          }
         };
       }
     }
@@ -699,14 +708,50 @@ test('opportunistic maintenance is throttled and does not repeat work per reques
   context.dailySystemHealthCheck = function() { counts.health += 1; };
   context.reconcileReliabilityTriggers_ = function() { counts.triggers += 1; };
 
-  context.runOpportunisticMaintenance_();
-  context.runOpportunisticMaintenance_();
+  context.runOpportunisticMaintenance_(true);
+  context.runOpportunisticMaintenance_(true);
 
   assert.deepEqual(counts, { retry: 1, health: 1, triggers: 1, release: 6 });
   assert.equal(properties.get('ADMIN_ALERT_EMAIL'), 'tryharddancers@gmail.com');
   assert.ok(properties.get('OPS_LAST_RETRY_FALLBACK_AT'));
   assert.ok(properties.get('OPS_LAST_HEALTH_FALLBACK_AT'));
   assert.ok(properties.get('OPS_LAST_TRIGGER_AUDIT_AT'));
+});
+
+test('lightweight form-load maintenance skips the daily health check', () => {
+  const properties = new Map();
+  const counts = { retry: 0, health: 0, triggers: 0 };
+  const context = vm.createContext({
+    console, Date, JSON, Math, Object, String, Number, Error,
+    Logger: { log() {} },
+    PropertiesService: {
+      getScriptProperties() {
+        return {
+          getProperty(key) { return properties.get(key) || null; },
+          setProperty(key, value) { properties.set(key, value); }
+        };
+      }
+    },
+    Session: { getEffectiveUser() { return { getEmail() { return ''; } }; } },
+    LockService: {
+      getScriptLock() {
+        return { tryLock() { return true; }, releaseLock() {} };
+      }
+    }
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(ROOT, 'gas/Monitoring.js'), 'utf8'),
+    context,
+    { filename: 'gas/Monitoring.js' }
+  );
+  context.retryPendingNotifications_ = function() { counts.retry += 1; return {}; };
+  context.dailySystemHealthCheck = function() { counts.health += 1; };
+  context.reconcileReliabilityTriggers_ = function() { counts.triggers += 1; return {}; };
+
+  context.runOpportunisticMaintenance_(false);
+
+  assert.deepEqual(counts, { retry: 1, health: 0, triggers: 1 });
+  assert.equal(properties.has('OPS_LAST_HEALTH_FALLBACK_AT'), false);
 });
 
 test('a failed recipient is queued without resending successful recipients', () => {

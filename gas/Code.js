@@ -4,7 +4,7 @@
 function doPost(e) {
   try {
     const result = handleSubmission(e);
-    runOpportunisticMaintenance_();
+    runOpportunisticMaintenance_(true);
     return ContentService
       .createTextOutput(JSON.stringify(result))
       .setMimeType(ContentService.MimeType.JSON);
@@ -32,7 +32,7 @@ function doGet(e) {
 
   if (action === 'getMaster') {
     const data = getMasterData();
-    runOpportunisticMaintenance_();
+    runOpportunisticMaintenance_(false);
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true, data }))
       .setMimeType(ContentService.MimeType.JSON);

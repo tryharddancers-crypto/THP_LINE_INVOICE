@@ -102,6 +102,14 @@ function reconcileReliabilityTriggers_() {
     ScriptApp.newTrigger('dailySystemHealthCheck').timeBased().everyDays(1).atHour(6).create();
   }
 
+  const activeHandlers = ScriptApp.getProjectTriggers().map(function(trigger) {
+    return trigger.getHandlerFunction();
+  });
+  if (activeHandlers.indexOf('retryPendingNotifications') === -1
+      || activeHandlers.indexOf('dailySystemHealthCheck') === -1) {
+    throw new Error('必要な自動トリガーを作成できませんでした');
+  }
+
   return {
     retryPendingNotifications: true,
     dailySystemHealthCheck: true,
@@ -128,7 +136,7 @@ function claimMaintenanceWindow_(propertyKey, intervalMs) {
  * Trigger-free fallback. Normal form traffic keeps retries, health checks and
  * trigger configuration alive even if an installable trigger is removed.
  */
-function runOpportunisticMaintenance_() {
+function runOpportunisticMaintenance_(includeHealthCheck) {
   try {
     ensureAdminAlertEmail_();
 
@@ -141,7 +149,8 @@ function runOpportunisticMaintenance_() {
       }
     }
 
-    if (claimMaintenanceWindow_('OPS_LAST_HEALTH_FALLBACK_AT', HEALTH_FALLBACK_INTERVAL_MS_)) {
+    if (includeHealthCheck === true
+        && claimMaintenanceWindow_('OPS_LAST_HEALTH_FALLBACK_AT', HEALTH_FALLBACK_INTERVAL_MS_)) {
       try {
         dailySystemHealthCheck();
       } catch (err) {
