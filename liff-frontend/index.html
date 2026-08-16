@@ -96,14 +96,97 @@
     const jobCountMap = {};
     let pendingRows = [];
     let pendingSubmissionId = null;
+    let pendingSubmissionFingerprint = null;
     let jobTree = {};
     let priceMap = {}; // 案件名 → 単価
+    const SUBMISSION_STORAGE_KEY = 'thp.invoice.pendingSubmission';
+    const SUBMISSION_STORAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
     function createSubmissionId() {
       if (window.crypto && typeof window.crypto.randomUUID === 'function') {
         return window.crypto.randomUUID();
       }
       return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
+
+    function fingerprintRows(rows) {
+      const value = JSON.stringify(rows);
+      let hash = 2166136261;
+      for (let i = 0; i < value.length; i++) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return value.length + ':' + (hash >>> 0).toString(16);
+    }
+
+    function loadPendingSubmissions() {
+      let saved = null;
+      try {
+        saved = JSON.parse(window.localStorage.getItem(SUBMISSION_STORAGE_KEY) || 'null');
+      } catch (e) {}
+
+      // Convert the previous single-record format without losing an in-flight retry.
+      if (saved && saved.id && saved.fingerprint) {
+        saved = {
+          entries: {
+            [saved.fingerprint]: { id: saved.id, createdAt: Date.now() }
+          }
+        };
+      }
+
+      const cutoff = Date.now() - SUBMISSION_STORAGE_RETENTION_MS;
+      const entries = saved && saved.entries ? saved.entries : {};
+      Object.keys(entries).forEach(key => {
+        const entry = entries[key];
+        if (!entry || !entry.id || Number(entry.createdAt || 0) < cutoff) {
+          delete entries[key];
+        }
+      });
+      return { entries };
+    }
+
+    function savePendingSubmissions(store) {
+      const keys = Object.keys(store.entries);
+      if (keys.length === 0) {
+        try { window.localStorage.removeItem(SUBMISSION_STORAGE_KEY); } catch (e) {}
+        return;
+      }
+
+      // Keep storage bounded even if many interrupted drafts accumulate.
+      keys.sort((a, b) => store.entries[b].createdAt - store.entries[a].createdAt)
+        .slice(20)
+        .forEach(key => delete store.entries[key]);
+      try {
+        window.localStorage.setItem(SUBMISSION_STORAGE_KEY, JSON.stringify(store));
+      } catch (e) {}
+    }
+
+    function prepareSubmissionId(rows) {
+      const fingerprint = fingerprintRows(rows);
+      const store = loadPendingSubmissions();
+      const savedEntry = store.entries[fingerprint];
+      const inMemoryId = pendingSubmissionFingerprint === fingerprint
+        ? pendingSubmissionId
+        : null;
+
+      pendingSubmissionId = inMemoryId || (savedEntry && savedEntry.id) || createSubmissionId();
+      pendingSubmissionFingerprint = fingerprint;
+      store.entries[fingerprint] = {
+        id: pendingSubmissionId,
+        createdAt: savedEntry ? savedEntry.createdAt : Date.now()
+      };
+
+      savePendingSubmissions(store);
+    }
+
+    function clearPendingSubmission() {
+      if (pendingSubmissionFingerprint) {
+        const store = loadPendingSubmissions();
+        delete store.entries[pendingSubmissionFingerprint];
+        savePendingSubmissions(store);
+      }
+      pendingSubmissionId = null;
+      pendingSubmissionFingerprint = null;
     }
 
     async function init() {
@@ -283,7 +366,7 @@
       const errEl = document.getElementById('form-message');
       try {
         pendingRows = collectRows();
-        pendingSubmissionId = createSubmissionId();
+        prepareSubmissionId(pendingRows);
         errEl.textContent = '';
       } catch (e) {
         errEl.textContent = '❌ ' + e.message;
@@ -324,7 +407,6 @@
     }
 
     function backToForm() {
-      pendingSubmissionId = null;
       document.getElementById('confirm-view').style.display = 'none';
       document.getElementById('form-view').style.display = 'block';
     }
@@ -348,6 +430,7 @@
         });
         const json = await res.json();
         if (!json.ok) throw new Error(json.error || '送信に失敗しました');
+        clearPendingSubmission();
         msg.textContent = `✅ ${json.count}件を送信しました（${json.date}）`;
         setTimeout(() => {
           document.getElementById('confirm-view').style.display = 'none';
@@ -356,7 +439,6 @@
           personCount = 0;
           Object.keys(jobCountMap).forEach(k => delete jobCountMap[k]);
           pendingRows = [];
-          pendingSubmissionId = null;
           document.getElementById('form-message').textContent = '';
           addPerson();
         }, 2000);

@@ -37,14 +37,21 @@ function normalizeSubmissionId_(value) {
  * @returns {Object|null}
  */
 function getSavedSubmissionResult_(submissionId) {
-  const raw = PropertiesService.getScriptProperties()
-    .getProperty(SUBMISSION_GUARD_PREFIX_ + submissionId);
+  const props = PropertiesService.getScriptProperties();
+  const key = SUBMISSION_GUARD_PREFIX_ + submissionId;
+  const raw = props.getProperty(key);
   if (!raw) return null;
 
   try {
     const record = JSON.parse(raw);
+    const cutoff = Date.now() - SUBMISSION_GUARD_RETENTION_MS_;
+    if (!record.savedAt || Number(record.savedAt) < cutoff) {
+      props.deleteProperty(key);
+      return null;
+    }
     return record && record.result ? record.result : null;
   } catch (err) {
+    props.deleteProperty(key);
     Logger.log('送信ID記録の読み取り失敗: ' + submissionId + ' / ' + err.message);
     return null;
   }
